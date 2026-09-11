@@ -81,7 +81,6 @@ input[type=range] { width: 100%; }
   </div>
 </div>
 <div class="content">
-
   <div class="page active" id="page-control">
     <div id="alert-bar" class="alert-bar">⚠️ <span id="alert-msg">Небезпека!</span></div>
     <div class="grid-2" style="margin-top:12px">
@@ -91,24 +90,24 @@ input[type=range] { width: 100%; }
           <div class="joy-row">
             <div style="width:52px"></div>
             <button class="joy-btn" id="btn-fwd"
-              onmousedown="startCmd('forward')" onmouseup="startCmd('stop')"
-              ontouchstart="startCmd('forward')" ontouchend="startCmd('stop')">↑</button>
+              onmousedown="startCmd('forward')" onmouseup="stopCmd()"
+              ontouchstart="startCmd('forward')" ontouchend="stopCmd()">↑</button>
             <div style="width:52px"></div>
           </div>
           <div class="joy-row">
             <button class="joy-btn"
-              onmousedown="startCmd('left')" onmouseup="startCmd('stop')"
-              ontouchstart="startCmd('left')" ontouchend="startCmd('stop')">←</button>
-            <button class="joy-btn stop" onclick="startCmd('stop')">STOP</button>
+              onmousedown="startCmd('left')" onmouseup="stopCmd()"
+              ontouchstart="startCmd('left')" ontouchend="stopCmd()">←</button>
+            <button class="joy-btn stop" onmousedown="stopCmd()" ontouchstart="stopCmd()">STOP</button>
             <button class="joy-btn"
-              onmousedown="startCmd('right')" onmouseup="startCmd('stop')"
-              ontouchstart="startCmd('right')" ontouchend="startCmd('stop')">→</button>
+              onmousedown="startCmd('right')" onmouseup="stopCmd()"
+              ontouchstart="startCmd('right')" ontouchend="stopCmd()">→</button>
           </div>
           <div class="joy-row">
             <div style="width:52px"></div>
             <button class="joy-btn"
-              onmousedown="startCmd('backward')" onmouseup="startCmd('stop')"
-              ontouchstart="startCmd('backward')" ontouchend="startCmd('stop')">↓</button>
+              onmousedown="startCmd('backward')" onmouseup="stopCmd()"
+              ontouchstart="startCmd('backward')" ontouchend="stopCmd()">↓</button>
             <div style="width:52px"></div>
           </div>
         </div>
@@ -166,8 +165,8 @@ input[type=range] { width: 100%; }
       </div>
     </div>
   </div>
-
 </div>
+
 <script>
 var speed = 50;
 var cmdInterval = null;
@@ -183,29 +182,38 @@ function addLog(msg, type) {
   var box = document.getElementById('log-box');
   var d = document.createElement('div');
   d.className = 'log-line';
-  var t = new Date(); var ts = String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0');
+  var t = new Date();
+  var ts = String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0');
   d.innerHTML = '<span style="color:#555">['+ts+'] </span><span class="'+(type||'')+'">'+msg+'</span>';
-  box.appendChild(d); box.scrollTop = box.scrollHeight;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
 }
 
 function sendCmd(direction) {
-  fetch('/motor/'+direction+'?speed='+speed).then(r=>r.json()).then(d=>{
-    if(d.blocked){
-      addLog('⚠️ '+d.reason, 'warn');
-      document.getElementById('alert-bar').classList.add('show');
-      document.getElementById('alert-msg').textContent = d.reason;
-    } else {
-      document.getElementById('alert-bar').classList.remove('show');
-    }
-  });
+  fetch('/motor/'+direction+'?speed='+speed)
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.blocked){
+        addLog('⚠️ '+d.reason, 'warn');
+        document.getElementById('alert-bar').classList.add('show');
+        document.getElementById('alert-msg').textContent = d.reason;
+        stopCmd();
+      } else {
+        document.getElementById('alert-bar').classList.remove('show');
+      }
+    });
 }
 
 function startCmd(direction) {
-  if(cmdInterval) { clearInterval(cmdInterval); cmdInterval = null; }
+  if(cmdInterval){ clearInterval(cmdInterval); cmdInterval = null; }
   sendCmd(direction);
-  if(direction !== 'stop') {
-    cmdInterval = setInterval(() => sendCmd(direction), 150);
-  }
+  cmdInterval = setInterval(function(){ sendCmd(direction); }, 150);
+}
+
+function stopCmd() {
+  if(cmdInterval){ clearInterval(cmdInterval); cmdInterval = null; }
+  fetch('/motor/stop?speed=0');
+  addLog('Стоп', '');
 }
 
 function updateSensors() {
@@ -220,7 +228,7 @@ function updateSensors() {
     var el = document.getElementById('live-cliff');
     el.textContent = cliff ? 'ТАК!' : 'ні';
     el.style.color = cliff ? '#dc2626' : '#22c55e';
-    if(cliff) {
+    if(cliff){
       document.getElementById('alert-bar').classList.add('show');
       document.getElementById('alert-msg').textContent = 'Край столу!';
     }
@@ -252,11 +260,18 @@ def motor(direction):
         motors.stop()
         safety.set_direction('stop')
         return jsonify({'blocked': True, 'reason': reason})
-    motors_map = {'forward': motors.forward, 'backward': motors.backward,
-                  'left': motors.left, 'right': motors.right, 'stop': motors.stop}
+    motors_map = {
+        'forward': motors.forward,
+        'backward': motors.backward,
+        'left': motors.left,
+        'right': motors.right,
+        'stop': motors.stop
+    }
     if direction in motors_map:
-        if direction == 'stop': motors_map[direction]()
-        else: motors_map[direction](speed)
+        if direction == 'stop':
+            motors_map[direction]()
+        else:
+            motors_map[direction](speed)
     safety.set_direction(direction)
     return jsonify({'blocked': False, 'cmd': direction, 'speed': speed})
 
