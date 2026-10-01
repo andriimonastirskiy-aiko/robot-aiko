@@ -1,15 +1,13 @@
-import os
-import time
-
-CMD_FILE = '/tmp/audio_cmd'
+cat > /home/aiko/audio.py << 'EOF'
+FIFO_PATH = '/tmp/audio_fifo'
 STATUS_FILE = '/tmp/audio_status'
 
-AUDIO_DEVICE = 'hw:1,0'
-RECORD_FILE = '/home/aiko/test.wav'
-LOUD_FILE = '/home/aiko/test_loud.wav'
-
 def send_cmd(cmd):
-    open(CMD_FILE, 'w').write(cmd)
+    try:
+        with open(FIFO_PATH, 'w') as f:
+            f.write(cmd)
+    except Exception as e:
+        print(f"Помилка відправки команди: {e}")
 
 def get_status():
     try:
@@ -28,3 +26,4 @@ def play(filename=None):
 def play_text(text):
     send_cmd(f'speak|{text}')
     return True
+EOF
