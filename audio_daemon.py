@@ -1,16 +1,14 @@
 cat > /home/aiko/audio_daemon.py << 'EOF'
 import subprocess
-import time
 import os
 
 AUDIO_DEVICE = 'hw:1,0'
-RECORD_FILE = '/home/aiko/test.wav'
-LOUD_FILE = '/home/aiko/test_loud.wav'
-CMD_FILE = '/tmp/audio_cmd'
-STATUS_FILE = '/tmp/audio_status'
+FIFO_PATH = '/tmp/audio_fifo'
+RECORD_FILE = '/dev/shm/rec.wav'
+LOUD_FILE = '/dev/shm/rec_loud.wav'
 
 def write_status(status):
-    open(STATUS_FILE, 'w').write(status)
+    open('/tmp/audio_status', 'w').write(status)
 
 def record(seconds):
     write_status('recording')
@@ -19,7 +17,10 @@ def record(seconds):
         '-f', 'S32_LE', '-r', '48000', '-c', '2',
         '-d', str(seconds), RECORD_FILE
     ], timeout=seconds+3)
-    subprocess.run(['sox', RECORD_FILE, LOUD_FILE, 'gain', '20'])
+    subprocess.run([
+        'sox', RECORD_FILE, LOUD_FILE,
+        'gain', '20'
+    ])
     write_status('ready')
 
 def play():
@@ -30,7 +31,8 @@ def play():
 def speak(text):
     write_status('speaking')
     tts = subprocess.Popen([
-        'espeak-ng', '-v', 'uk', '-s', '120', '-p', '5', '-a', '5',
+        'espeak-ng', '-v', 'uk',
+        '-s', '120', '-p', '5', '-a', '5',
         text, '--stdout'
     ], stdout=subprocess.PIPE)
     subprocess.run([
@@ -38,23 +40,27 @@ def speak(text):
     ], stdin=tts.stdout)
     write_status('ready')
 
+if os.path.exists(FIFO_PATH):
+    os.remove(FIFO_PATH)
+os.mkfifo(FIFO_PATH)
+
 write_status('ready')
 print('Аудіо демон запущено!')
 
 while True:
     try:
-        if os.path.exists(CMD_FILE):
-            cmd = open(CMD_FILE).read().strip()
-            os.remove(CMD_FILE)
-            parts = cmd.split('|')
-            if parts[0] == 'record':
-                record(int(parts[1]))
-            elif parts[0] == 'play':
-                play()
-            elif parts[0] == 'speak':
-                speak(parts[1])
+        with open(FIFO_PATH, 'r') as f:
+            cmd = f.read().strip()
+        if not cmd:
+            continue
+        parts = cmd.split('|')
+        if parts[0] == 'record':
+            record(int(parts[1]))
+        elif parts[0] == 'play':
+            play()
+        elif parts[0] == 'speak':
+            speak(parts[1])
     except Exception as e:
         print(f"Помилка: {e}")
         write_status('ready')
-    time.sleep(0.1)
 EOF
