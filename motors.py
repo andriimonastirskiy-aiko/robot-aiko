@@ -1,4 +1,3 @@
-cat > /home/aiko/motors.py << 'EOF'
 import RPi.GPIO as GPIO
 
 GPIO.setmode(GPIO.BCM)
@@ -60,4 +59,3 @@ def stop():
 def cleanup():
     stop()
     GPIO.cleanup()
-EOF
