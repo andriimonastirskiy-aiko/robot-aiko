@@ -1,4 +1,3 @@
-cat > /home/aiko/web_server.py << 'EOF'
 from flask import Flask, render_template_string, jsonify, request
 import motors
 import sensor_manager
@@ -379,4 +378,3 @@ if __name__ == '__main__':
         app.run(host='0.0.0.0', port=5000, debug=False)
     finally:
         motors.cleanup()
-EOF
