@@ -69,9 +69,10 @@ body { font-family: sans-serif; background: #f5f5f5; color: #111; }
 .card-title { font-size: 11px; color: #888; margin-bottom: 8px; }
 .joystick-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 8px 0; }
 .joy-row { display: flex; gap: 6px; }
-.joy-btn { width: 52px; height: 52px; border-radius: 10px; border: 1px solid #ddd; background: #f9f9f9; cursor: pointer; font-size: 20px; transition: all 0.1s; user-select: none; }
+.joy-btn { width: 52px; height: 52px; border-radius: 10px; border: 1px solid #ddd; background: #f9f9f9; cursor: pointer; font-size: 20px; transition: all 0.1s; user-select: none; -webkit-user-select: none; }
 .joy-btn:active { background: #dbeafe; border-color: #93c5fd; transform: scale(0.95); }
 .joy-btn.stop { background: #fee2e2; border-color: #fca5a5; font-size: 13px; font-weight: 500; color: #dc2626; }
+.joy-btn.pressed { background: #dbeafe; border-color: #93c5fd; transform: scale(0.95); }
 .slider-wrap { margin-bottom: 12px; }
 .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #888; margin-bottom: 6px; }
 .slider-val { color: #111; font-weight: 500; }
@@ -112,31 +113,36 @@ input[type=range] { width: 100%; }
         <div class="joystick-wrap">
           <div class="joy-row">
             <div style="width:52px"></div>
-            <button class="joy-btn"
+            <button class="joy-btn" id="btn-forward"
               onmousedown="startCmd('forward')" onmouseup="stopCmd()"
-              ontouchstart="startCmd('forward')" ontouchend="stopCmd()">↑</button>
+              onmouseleave="stopCmd()"
+              ontouchstart="startCmd('forward');event.preventDefault()" ontouchend="stopCmd()">↑</button>
             <div style="width:52px"></div>
           </div>
           <div class="joy-row">
-            <button class="joy-btn"
+            <button class="joy-btn" id="btn-left"
               onmousedown="startCmd('left')" onmouseup="stopCmd()"
-              ontouchstart="startCmd('left')" ontouchend="stopCmd()">←</button>
-            <button class="joy-btn stop" onmousedown="stopCmd()" ontouchstart="stopCmd()">STOP</button>
-            <button class="joy-btn"
+              onmouseleave="stopCmd()"
+              ontouchstart="startCmd('left');event.preventDefault()" ontouchend="stopCmd()">←</button>
+            <button class="joy-btn stop" onmousedown="stopCmd()" ontouchstart="stopCmd();event.preventDefault()">STOP</button>
+            <button class="joy-btn" id="btn-right"
               onmousedown="startCmd('right')" onmouseup="stopCmd()"
-              ontouchstart="startCmd('right')" ontouchend="stopCmd()">→</button>
+              onmouseleave="stopCmd()"
+              ontouchstart="startCmd('right');event.preventDefault()" ontouchend="stopCmd()">→</button>
           </div>
           <div class="joy-row">
             <div style="width:52px"></div>
-            <button class="joy-btn"
+            <button class="joy-btn" id="btn-backward"
               onmousedown="startCmd('backward')" onmouseup="stopCmd()"
-              ontouchstart="startCmd('backward')" ontouchend="stopCmd()">↓</button>
+              onmouseleave="stopCmd()"
+              ontouchstart="startCmd('backward');event.preventDefault()" ontouchend="stopCmd()">↓</button>
             <div style="width:52px"></div>
           </div>
         </div>
         <div class="slider-wrap">
-          <div class="slider-label"><span>Швидкість</span><span class="slider-val" id="spd-val">50%</span></div>
-          <input type="range" min="0" max="100" value="50" oninput="speed=this.value; document.getElementById('spd-val').textContent=this.value+'%'">
+          <div class="slider-label"><span>Швидкість</span><span class="slider-val" id="spd-val">30%</span></div>
+          <input type="range" min="0" max="100" value="30" id="speed-slider"
+            oninput="speed=parseInt(this.value); document.getElementById('spd-val').textContent=this.value+'%'">
         </div>
       </div>
       <div class="card">
@@ -203,9 +209,21 @@ input[type=range] { width: 100%; }
 
 </div>
 <script>
-var speed = 50;
+// ======= Фікс 3: speed завжди береться зі слайдера =======
+var slider = document.getElementById('speed-slider');
+var speed = parseInt(slider.value);
+
+slider.addEventListener('input', function() {
+  speed = parseInt(this.value);
+  document.getElementById('spd-val').textContent = this.value + '%';
+});
+
 var cmdInterval = null;
 var infoActive = false;
+// ======= Фікс 1: мінімальний час утримання =======
+var pressStartTime = 0;
+var MIN_HOLD_MS = 120;
+var currentDirection = null;
 
 function showPage(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -232,23 +250,36 @@ function sendCmd(direction) {
       addLog('⚠️ '+d.reason, 'warn');
       document.getElementById('alert-bar').classList.add('show');
       document.getElementById('alert-msg').textContent = d.reason;
-      stopCmd();
+      forceStop();
     } else {
       document.getElementById('alert-bar').classList.remove('show');
     }
-  });
+  }).catch(function(){ forceStop(); });
 }
 
 function startCmd(direction) {
+  pressStartTime = Date.now();
+  currentDirection = direction;
   if(cmdInterval){ clearInterval(cmdInterval); cmdInterval = null; }
   sendCmd(direction);
   cmdInterval = setInterval(function(){ sendCmd(direction); }, 150);
 }
 
-function stopCmd() {
+function forceStop() {
   if(cmdInterval){ clearInterval(cmdInterval); cmdInterval = null; }
+  currentDirection = null;
   fetch('/motor/stop?speed=0');
-  addLog('Стоп', '');
+}
+
+function stopCmd() {
+  var held = Date.now() - pressStartTime;
+  // Фікс 1: якщо відпустили занадто швидко — ігноруємо рух
+  if(held < MIN_HOLD_MS && currentDirection !== null) {
+    addLog('Занадто короткий дотик — ігнорую', '');
+  } else if(currentDirection !== null) {
+    addLog('Стоп (' + held + 'мс)', '');
+  }
+  forceStop();
 }
 
 function startRecord() {
@@ -307,11 +338,11 @@ function updateSensors() {
 setInterval(updateSensors, 200);
 
 document.addEventListener('visibilitychange', function(){
-  if(document.hidden){
-    if(cmdInterval){ clearInterval(cmdInterval); cmdInterval = null; }
-    fetch('/motor/stop?speed=0');
-  }
+  if(document.hidden){ forceStop(); }
 });
+
+// Захист: якщо мишка виходить за межі вікна — зупинка
+document.addEventListener('mouseup', function(){ if(currentDirection) stopCmd(); });
 </script>
 </body>
 </html>
