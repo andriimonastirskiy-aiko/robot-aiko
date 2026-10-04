@@ -17,7 +17,7 @@ def watchdog_loop():
     while True:
         if time.time() - last_cmd_time > WATCHDOG_TIMEOUT:
             motors.stop()
-            sensor_manager.set_moving(False)
+            sensor_manager.set_moving(False, 'stop')
         time.sleep(0.05)
 
 threading.Thread(target=watchdog_loop, daemon=True).start()
@@ -200,8 +200,8 @@ input[type=range] { width: 100%; }
       </div>
       <div class="card">
         <div class="card-title">Ліміти безпеки</div>
-        <div class="sensor-row"><span class="sensor-name">Перешкода</span><span class="sensor-val">150 мм</span></div>
-        <div class="sensor-row"><span class="sensor-name">Край столу</span><span class="sensor-val">200 мм</span></div>
+        <div class="sensor-row"><span class="sensor-name">Перешкода</span><span class="sensor-val">200 мм</span></div>
+        <div class="sensor-row"><span class="sensor-name">Край столу</span><span class="sensor-val">80 мм</span></div>
         <div class="sensor-row"><span class="sensor-name">Watchdog</span><span class="sensor-val">0.3 сек</span></div>
       </div>
     </div>
@@ -209,7 +209,7 @@ input[type=range] { width: 100%; }
 
 </div>
 <script>
-// ======= Фікс 3: speed завжди береться зі слайдера =======
+// ======= speed завжди береться зі слайдера =======
 var slider = document.getElementById('speed-slider');
 var speed = parseInt(slider.value);
 
@@ -220,7 +220,6 @@ slider.addEventListener('input', function() {
 
 var cmdInterval = null;
 var infoActive = false;
-// ======= Фікс 1: мінімальний час утримання =======
 var pressStartTime = 0;
 var MIN_HOLD_MS = 120;
 var currentDirection = null;
@@ -273,7 +272,6 @@ function forceStop() {
 
 function stopCmd() {
   var held = Date.now() - pressStartTime;
-  // Фікс 1: якщо відпустили занадто швидко — ігноруємо рух
   if(held < MIN_HOLD_MS && currentDirection !== null) {
     addLog('Занадто короткий дотик — ігнорую', '');
   } else if(currentDirection !== null) {
@@ -317,7 +315,7 @@ function updateSensors() {
     document.getElementById('val-front').textContent = front;
     document.getElementById('val-cf').textContent = cf;
     document.getElementById('val-cb').textContent = cb;
-    var cliff = d.cliff_front > 200 || d.cliff_back > 200;
+    var cliff = d.cliff_front > 80 || d.cliff_back > 80;
     var el = document.getElementById('live-cliff');
     el.textContent = cliff ? 'ТАК!' : 'ні';
     el.style.color = cliff ? '#dc2626' : '#22c55e';
@@ -341,7 +339,6 @@ document.addEventListener('visibilitychange', function(){
   if(document.hidden){ forceStop(); }
 });
 
-// Захист: якщо мишка виходить за межі вікна — зупинка
 document.addEventListener('mouseup', function(){ if(currentDirection) stopCmd(); });
 </script>
 </body>
@@ -359,12 +356,12 @@ def motor(direction):
     speed = int(request.args.get('speed', 50))
     if direction == 'stop':
         motors.stop()
-        sensor_manager.set_moving(False)
+        sensor_manager.set_moving(False, 'stop')
         return jsonify({'blocked': False, 'cmd': 'stop'})
     safe, reason = sensor_manager.is_safe(direction)
     if not safe:
         motors.stop()
-        sensor_manager.set_moving(False)
+        sensor_manager.set_moving(False, 'stop')
         return jsonify({'blocked': True, 'reason': reason})
     motors_map = {
         'forward': motors.forward,
@@ -374,7 +371,8 @@ def motor(direction):
     }
     if direction in motors_map:
         motors_map[direction](speed)
-    sensor_manager.set_moving(True, motors.stop)
+    # ✅ Передаємо напрямок руху — тепер сенсори знають що блокувати
+    sensor_manager.set_moving(True, direction, motors.stop)
     return jsonify({'blocked': False, 'cmd': direction})
 
 @app.route('/sensors')
