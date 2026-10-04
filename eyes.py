@@ -1,4 +1,3 @@
-cat > /home/aiko/eyes.py << 'EOF'
 from luma.lcd.device import ili9488
 from luma.core.interface.serial import spi
 from luma.core.render import canvas
@@ -62,4 +61,3 @@ try:
         time.sleep(2)
 except KeyboardInterrupt:
     pass
-EOF
