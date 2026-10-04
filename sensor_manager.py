@@ -7,6 +7,7 @@ CLIFF_LIMIT = 80      # більше 80мм вниз — край столу, с
 sensor_data = {'front': 0, 'cliff_front': 0, 'cliff_back': 0}
 _lock = threading.Lock()
 _moving = False
+_direction = 'stop'   # ✅ 'forward' / 'backward' / 'left' / 'right' / 'stop'
 _stop_callback = None
 _available = False
 
@@ -55,20 +56,39 @@ def init():
     t = threading.Thread(target=_try_init, daemon=True)
     t.start()
 
-def set_moving(moving, stop_cb=None):
-    global _moving, _stop_callback
+def set_moving(moving, direction='stop', stop_cb=None):
+    """
+    moving    — True/False чи робот рухається
+    direction — напрямок: 'forward' / 'backward' / 'left' / 'right' / 'stop'
+    stop_cb   — функція яку викликати при небезпеці
+    """
+    global _moving, _direction, _stop_callback
     _moving = moving
+    _direction = direction
     _stop_callback = stop_cb
 
 def _check_safety():
     if not _moving:
         return
     d = sensor_data
-    danger = (
-        (d['front'] < OBSTACLE_LIMIT and d['front'] > 0) or
-        d['cliff_front'] > CLIFF_LIMIT or
-        d['cliff_back'] > CLIFF_LIMIT
-    )
+    danger = False
+
+    # ✅ Перевіряємо тільки те що небезпечно для ПОТОЧНОГО напрямку
+    if _direction == 'forward':
+        if d['front'] < OBSTACLE_LIMIT and d['front'] > 0:
+            danger = True   # перешкода спереду
+            print("⚠️ перешкода спереду — блокую forward")
+        if d['cliff_front'] > CLIFF_LIMIT:
+            danger = True   # край столу спереду
+            print("⚠️ край столу спереду — блокую forward")
+
+    elif _direction == 'backward':
+        if d['cliff_back'] > CLIFF_LIMIT:
+            danger = True   # край столу ззаду
+            print("⚠️ край столу ззаду — блокую backward")
+
+    # ✅ left / right — не блокуємо (повороти на місці безпечні)
+
     if danger and _stop_callback:
         _stop_callback()
 
