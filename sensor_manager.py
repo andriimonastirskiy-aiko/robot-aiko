@@ -46,7 +46,7 @@ def _try_init():
                 _check_safety()
             except:
                 pass
-            time.sleep(0.033 if _moving else 2.0)
+            time.sleep(0.05)
 
     except Exception as e:
         print(f"Сенсори не знайдені — продовжуємо без них")
