@@ -1,4 +1,3 @@
-cat > /home/aiko/audio.py << 'EOF'
 FIFO_PATH = '/tmp/audio_fifo'
 STATUS_FILE = '/tmp/audio_status'
 
@@ -26,4 +25,3 @@ def play(filename=None):
 def play_text(text):
     send_cmd(f'speak|{text}')
     return True
-EOF
