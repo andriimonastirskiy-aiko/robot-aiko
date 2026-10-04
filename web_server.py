@@ -11,14 +11,14 @@ app = Flask(__name__)
 sensor_manager.init()
 
 last_cmd_time = time.time()
-WATCHDOG_TIMEOUT = 0.5
+WATCHDOG_TIMEOUT = 0.3
 
 def watchdog_loop():
     while True:
         if time.time() - last_cmd_time > WATCHDOG_TIMEOUT:
             motors.stop()
             sensor_manager.set_moving(False)
-        time.sleep(0.1)
+        time.sleep(0.05)
 
 threading.Thread(target=watchdog_loop, daemon=True).start()
 
@@ -196,7 +196,7 @@ input[type=range] { width: 100%; }
         <div class="card-title">Ліміти безпеки</div>
         <div class="sensor-row"><span class="sensor-name">Перешкода</span><span class="sensor-val">150 мм</span></div>
         <div class="sensor-row"><span class="sensor-name">Край столу</span><span class="sensor-val">200 мм</span></div>
-        <div class="sensor-row"><span class="sensor-name">Watchdog</span><span class="sensor-val">0.5 сек</span></div>
+        <div class="sensor-row"><span class="sensor-name">Watchdog</span><span class="sensor-val">0.3 сек</span></div>
       </div>
     </div>
   </div>
@@ -242,7 +242,7 @@ function sendCmd(direction) {
 function startCmd(direction) {
   if(cmdInterval){ clearInterval(cmdInterval); cmdInterval = null; }
   sendCmd(direction);
-  cmdInterval = setInterval(function(){ sendCmd(direction); }, 200);
+  cmdInterval = setInterval(function(){ sendCmd(direction); }, 150);
 }
 
 function stopCmd() {
@@ -304,7 +304,7 @@ function updateSensors() {
   }
 }
 
-setInterval(updateSensors, 2000);
+setInterval(updateSensors, 200);
 
 document.addEventListener('visibilitychange', function(){
   if(document.hidden){
