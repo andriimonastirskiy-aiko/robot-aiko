@@ -1,4 +1,3 @@
-cat > /home/aiko/sensor_manager.py << 'EOF'
 import threading
 import time
 
@@ -90,4 +89,3 @@ def is_safe(direction):
         if d['cliff_back'] > CLIFF_LIMIT:
             return False, 'край ззаду'
     return True, 'ok'
-EOF
