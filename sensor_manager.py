@@ -1,8 +1,8 @@
 import threading
 import time
 
-OBSTACLE_LIMIT = 150
-CLIFF_LIMIT = 200
+OBSTACLE_LIMIT = 200  # менше 200мм спереду — стоп
+CLIFF_LIMIT = 80      # більше 80мм вниз — край столу, стоп
 
 sensor_data = {'front': 0, 'cliff_front': 0, 'cliff_back': 0}
 _lock = threading.Lock()
@@ -82,10 +82,10 @@ def is_safe(direction):
     d = get_data()
     if direction == 'forward':
         if d['front'] < OBSTACLE_LIMIT and d['front'] > 0:
-            return False, 'перешкода спереду'
+            return False, 'перешкода спереду (менше 200мм)'
         if d['cliff_front'] > CLIFF_LIMIT:
-            return False, 'край спереду'
+            return False, 'край столу спереду!'
     if direction == 'backward':
         if d['cliff_back'] > CLIFF_LIMIT:
-            return False, 'край ззаду'
+            return False, 'край столу ззаду!'
     return True, 'ok'
