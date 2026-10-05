@@ -1,4 +1,3 @@
-cat > /home/aiko/audio_daemon.py << 'EOF'
 import subprocess
 import os
 
@@ -6,6 +5,7 @@ AUDIO_DEVICE = 'hw:1,0'
 FIFO_PATH = '/tmp/audio_fifo'
 RECORD_FILE = '/dev/shm/rec.wav'
 LOUD_FILE = '/dev/shm/rec_loud.wav'
+VOLUME = 15.0  # гучність відтворення (перевірено! оптимально на відстані 20см)
 
 def write_status(status):
     open('/tmp/audio_status', 'w').write(status)
@@ -25,7 +25,7 @@ def record(seconds):
 
 def play():
     write_status('playing')
-    subprocess.run(['sox', LOUD_FILE, '-t', 'alsa', AUDIO_DEVICE])
+    subprocess.run(['sox', LOUD_FILE, '-t', 'alsa', AUDIO_DEVICE, 'vol', str(VOLUME)])
     write_status('ready')
 
 def speak(text):
@@ -36,7 +36,7 @@ def speak(text):
         text, '--stdout'
     ], stdout=subprocess.PIPE)
     subprocess.run([
-        'sox', '-t', 'wav', '-', '-t', 'alsa', AUDIO_DEVICE
+        'sox', '-t', 'wav', '-', '-t', 'alsa', AUDIO_DEVICE, 'vol', str(VOLUME)
     ], stdin=tts.stdout)
     write_status('ready')
 
@@ -63,4 +63,3 @@ while True:
     except Exception as e:
         print(f"Помилка: {e}")
         write_status('ready')
-EOF
