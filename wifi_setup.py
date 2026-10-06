@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# wifi_setup.py — Captive Portal для AIKO (серійна версія)
+# wifi_setup.py — Captive Portal для AIKO (виправлена версія)
 
 import os, sys, time, subprocess, threading, json, logging
 from flask import Flask, request, redirect, render_template_string
@@ -27,25 +27,30 @@ def load_config():
             return json.load(f)
     return None
 
+# ── Визначення DHCP клієнта ────────────────────────────────────────────────────
+def get_dhcp_client():
+    if subprocess.run(["which", "dhclient"], capture_output=True).returncode == 0:
+        return "dhclient"
+    if subprocess.run(["which", "dhcpcd"], capture_output=True).returncode == 0:
+        return "dhcpcd"
+    return None
+
 # ── Запуск AP ──────────────────────────────────────────────────────────────────
 def start_ap():
     log.info("🚀 Запускаємо точку доступу AIKO-Setup...")
 
-    # Вбиваємо все що може заважати
     subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True)
     subprocess.run(["sudo", "pkill", "dnsmasq"], capture_output=True)
     subprocess.run(["sudo", "systemctl", "stop", "wpa_supplicant"], capture_output=True)
     subprocess.run(["sudo", "systemctl", "stop", "NetworkManager"], capture_output=True)
     time.sleep(2)
 
-    # Чистимо інтерфейс і ставимо AP IP
     subprocess.run(["sudo", "ip", "link", "set", IFACE, "down"], capture_output=True)
     subprocess.run(["sudo", "ip", "addr", "flush", "dev", IFACE], capture_output=True)
     subprocess.run(["sudo", "ip", "link", "set", IFACE, "up"], capture_output=True)
     subprocess.run(["sudo", "ip", "addr", "add", f"{AP_IP}/24", "dev", IFACE], capture_output=True)
     time.sleep(1)
 
-    # hostapd конфіг
     with open("/tmp/hostapd.conf", "w") as f:
         f.write(f"""interface={IFACE}
 driver=nl80211
@@ -63,7 +68,6 @@ wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 """)
 
-    # dnsmasq конфіг (DHCP + redirect всього на AP_IP)
     with open("/tmp/dnsmasq_ap.conf", "w") as f:
         f.write(f"""interface={IFACE}
 dhcp-range=192.168.4.2,192.168.4.20,255.255.255.0,24h
@@ -72,7 +76,6 @@ dhcp-option=3,{AP_IP}
 dhcp-option=6,{AP_IP}
 """)
 
-    # Запускаємо
     subprocess.Popen(["sudo", "dnsmasq", "-C", "/tmp/dnsmasq_ap.conf", "--no-daemon"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1)
@@ -87,6 +90,7 @@ def connect_wifi(ssid, password):
 
     def do_connect():
         time.sleep(2)
+
         # Зупиняємо AP
         subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True)
         subprocess.run(["sudo", "pkill", "dnsmasq"], capture_output=True)
@@ -110,17 +114,48 @@ network={{
                         "/etc/wpa_supplicant/wpa_supplicant.conf"], capture_output=True)
         subprocess.run(["sudo", "ip", "addr", "flush", "dev", IFACE], capture_output=True)
         subprocess.run(["sudo", "systemctl", "restart", "wpa_supplicant"], capture_output=True)
-        time.sleep(4)
-        subprocess.run(["sudo", "dhclient", IFACE], capture_output=True)
         time.sleep(5)
 
-        result = subprocess.run(["ip", "addr", "show", IFACE], capture_output=True, text=True)
-        if "inet " in result.stdout:
-            log.info(f"✅ Підключено до {ssid}! Зберігаємо конфіг.")
+        # ── ВИПРАВЛЕННЯ: автовизначення DHCP клієнта ──
+        dhcp = get_dhcp_client()
+        if dhcp == "dhclient":
+            subprocess.run(["sudo", "dhclient", IFACE], capture_output=True, timeout=15)
+        elif dhcp == "dhcpcd":
+            subprocess.run(["sudo", "dhcpcd", IFACE], capture_output=True, timeout=15)
+        else:
+            log.warning("⚠️ DHCP клієнт не знайдено! Спробуємо networkctl...")
+            subprocess.run(["sudo", "networkctl", "renew", IFACE], capture_output=True)
+
+        # ── ВИПРАВЛЕННЯ: більший таймаут на отримання IP ──
+        log.info("⏳ Чекаємо на IP адресу (до 15 секунд)...")
+        ip_obtained = False
+        for i in range(15):
+            time.sleep(1)
+            result = subprocess.run(["ip", "addr", "show", IFACE], capture_output=True, text=True)
+            if "inet " in result.stdout:
+                for line in result.stdout.split('\n'):
+                    if "inet " in line:
+                        ip_addr = line.strip().split()[1]
+                        log.info(f"🌐 Отримано IP: {ip_addr}")
+                ip_obtained = True
+                break
+
+        if ip_obtained:
+            # ── ВИПРАВЛЕННЯ: перевірка реального інтернету ──
+            ping = subprocess.run(["ping", "-c", "2", "-W", "3", "8.8.8.8"], capture_output=True)
+            if ping.returncode == 0:
+                log.info(f"✅ Інтернет працює! Підключено до {ssid}")
+            else:
+                log.warning("⚠️ IP є але інтернету немає. Можливо неправильний пароль роутера?")
+
             save_config(ssid, password)
+            log.info("💤 Завершуємо Wi-Fi setup скрипт...")
+            time.sleep(2)
+            # ── ВИПРАВЛЕННЯ: коректно зупиняємо Flask ──
+            os._exit(0)
         else:
             log.warning(f"❌ Не вдалось підключитись до {ssid}! Повертаємось в AP режим...")
-            time.sleep(3)
+            time.sleep(2)
             start_ap()
 
     threading.Thread(target=do_connect, daemon=True).start()
@@ -166,7 +201,7 @@ HTML_PAGE = """
   </style>
 </head>
 <body><div class="card">
-  <div class="icon">🤖</div>
+  <div class="icon">🐱</div>
   <h1>Привіт! Я AIKO</h1>
   <p class="sub">Підключи мене до Wi-Fi і ми почнемо!</p>
   {% if message %}<div class="msg err">{{ message }}</div>{% endif %}
@@ -182,7 +217,7 @@ HTML_PAGE = """
     <input type="password" name="password" placeholder="Пароль від Wi-Fi">
     <button class="btn" type="submit">🚀 Підключити AIKO!</button>
   </form>
-  <div class="footer">AIKO v1.0 • {{ ap_ip }}</div>
+  <div class="footer">AIKO v1.1 • {{ ap_ip }}</div>
 </div></body></html>
 """
 
@@ -203,7 +238,7 @@ HTML_SUCCESS = """
   <h1>Підключаюсь!</h1>
   <p>Намагаюсь підключитись до:</p>
   <div class="net">{{ ssid }}</div>
-  <p>Зачекай 20-30 секунд...<br>Потім підключись до своєї домашньої мережі<br>і знайди мене за адресою:<br><strong>http://aiko.local</strong></p>
+  <p>Зачекай 20-30 секунд...<br>Потім підключись до своєї домашньої мережі<br>і знайди мене за адресою:<br><strong>192.168.0.103</strong></p>
 </div></body></html>
 """
 
@@ -244,17 +279,15 @@ def captive():
 # ── Головна функція ────────────────────────────────────────────────────────────
 def main():
     log.info("=" * 50)
-    log.info("🤖 AIKO Wi-Fi Setup запущено!")
+    log.info("🤖 AIKO Wi-Fi Setup v1.1 запущено!")
     log.info("=" * 50)
 
-    # Перевіряємо чи є збережений конфіг
     cfg = load_config()
     if cfg:
         log.info(f"📋 Знайдено збережений Wi-Fi: {cfg['ssid']}")
-        log.info("✅ Підключаємось автоматично, AP не потрібна")
+        log.info("✅ Конфіг вже є — AP не потрібна. Виходимо.")
         return
 
-    # Немає конфігу — піднімаємо AP
     start_ap()
     log.info(f"🌐 Веб-сервер на http://{AP_IP}:80")
     app.run(host='0.0.0.0', port=80, debug=False, use_reloader=False)
