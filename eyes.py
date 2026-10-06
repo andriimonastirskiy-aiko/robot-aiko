@@ -1,6 +1,5 @@
 from luma.lcd.device import ili9488
 from luma.core.interface.serial import spi
-from luma.core.render import canvas
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 import time
 import math
@@ -25,13 +24,7 @@ print("✅ Всі картинки завантажено!")
 
 # ── Відображення кадру ────────────────────────────────────────────────────────
 def show(img):
-    frame = img.convert("RGB")
-    device.display(frame)
-
-# ── Накласти кольоровий оверлей ───────────────────────────────────────────────
-def color_overlay(img, color, alpha):
-    overlay = Image.new("RGBA", img.size, color + (alpha,))
-    return Image.alpha_composite(img.convert("RGBA"), overlay)
+    device.display(img.convert("RGB"))
 
 # ── Зміщення картинки ─────────────────────────────────────────────────────────
 def shift(img, dx=0, dy=0):
@@ -41,8 +34,8 @@ def shift(img, dx=0, dy=0):
 
 # ── Масштабування з центру ────────────────────────────────────────────────────
 def scale_center(img, factor):
-    nw = int(W * factor)
-    nh = int(H * factor)
+    nw = max(1, int(W * factor))
+    nh = max(1, int(H * factor))
     resized = img.resize((nw, nh), Image.LANCZOS)
     result = Image.new("RGBA", (W, H), (0, 0, 0, 255))
     x = (W - nw) // 2
@@ -50,229 +43,292 @@ def scale_center(img, factor):
     result.paste(resized, (x, y))
     return result
 
-# ── Fade між двома картинками ─────────────────────────────────────────────────
-def fade(img_from, img_to, steps=12, delay=0.03):
-    for i in range(steps + 1):
-        alpha = i / steps
-        blended = Image.blend(img_from.convert("RGB"), img_to.convert("RGB"), alpha)
-        device.display(blended)
-        time.sleep(delay)
+# ── Накласти кольоровий оверлей ───────────────────────────────────────────────
+def color_overlay(img, color, alpha):
+    overlay = Image.new("RGBA", img.size, color + (alpha,))
+    return Image.alpha_composite(img.convert("RGBA"), overlay)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 😊 HAPPY — дихання + рух вгору-вниз + моргання + усмішка
+# 🎬 ПЕРЕХОДИ МІЖ ЕМОЦІЯМИ
 # ─────────────────────────────────────────────────────────────────────────────
+
+# 💥 BURST — нова картинка вибухає з центру
+def transition_burst(img_from, img_to):
+    steps = 14
+    for i in range(steps):
+        t = i / steps
+        # Нова картинка росте з центру
+        scale = 0.05 + 0.95 * t
+        new_frame = scale_center(img_to, scale)
+        # Стара картинка трохи розмивається і темніє
+        alpha = int(255 * (1 - t))
+        old_frame = color_overlay(img_from, (0, 0, 0), int(180 * t))
+        # Поєднуємо: стара темніє, нова росте поверх
+        combined = Image.blend(old_frame.convert("RGB"), new_frame.convert("RGB"), t)
+        device.display(combined)
+        time.sleep(0.025)
+
+# 🌊 WAVE — хвиля зліва направо
+def transition_wave(img_from, img_to):
+    steps = 20
+    for i in range(steps + 1):
+        t = i / steps
+        x_split = int(W * t)
+        frame = img_from.copy().convert("RGB")
+        right_part = img_to.convert("RGB").crop((0, 0, x_split, H))
+        frame.paste(right_part, (0, 0))
+        # Хвиля — вертикальна лінія
+        draw = ImageDraw.Draw(frame)
+        for dy in range(-15, 15):
+            wave_x = x_split + int(8 * math.sin(dy * 0.4))
+            if 0 <= wave_x < W:
+                draw.line([(wave_x, max(0, dy*11)), (wave_x, min(H, dy*11+12))],
+                          fill=(255, 255, 255, 180), width=2)
+        device.display(frame)
+        time.sleep(0.02)
+
+# ⚡ FLASH — спалах і нова емоція
+def transition_flash(img_from, img_to):
+    # Спалах білого
+    for alpha in [60, 130, 200, 255, 200, 130]:
+        frame = color_overlay(img_from, (255, 255, 200), alpha)
+        show(frame)
+        time.sleep(0.02)
+    # Одразу нова картинка
+    show(img_to)
+    time.sleep(0.05)
+    # Легкий fade щоб не різало
+    for alpha in [80, 40, 0]:
+        frame = color_overlay(img_to, (255, 255, 200), alpha)
+        show(frame)
+        time.sleep(0.02)
+
+# 📺 GLITCH — розрізається на смуги
+def transition_glitch(img_from, img_to):
+    strips = 8
+    strip_h = H // strips
+    steps = 16
+    offsets = [random.randint(-W//2, W//2) for _ in range(strips)]
+
+    for i in range(steps):
+        t = i / steps
+        frame = Image.new("RGB", (W, H), (0, 0, 0))
+        for s in range(strips):
+            y0 = s * strip_h
+            y1 = y0 + strip_h
+            if t < 0.5:
+                # Стара картинка розїжджається
+                strip = img_from.convert("RGB").crop((0, y0, W, y1))
+                off = int(offsets[s] * (t * 2))
+            else:
+                # Нова картинка збирається
+                strip = img_to.convert("RGB").crop((0, y0, W, y1))
+                off = int(offsets[s] * (1 - (t - 0.5) * 2))
+            frame.paste(strip, (off, y0))
+            # Глітч лінія
+            if random.random() < 0.3:
+                draw = ImageDraw.Draw(frame)
+                draw.rectangle([(0, y0), (W, y0+2)], fill=(0, 255, 200))
+        device.display(frame)
+        time.sleep(0.025)
+
+# 🌀 SPIN ZOOM — крутиться і збільшується
+def transition_spinzoom(img_from, img_to):
+    steps = 16
+    for i in range(steps):
+        t = i / steps
+        # Стара зменшується
+        scale_old = 1.0 - 0.5 * t
+        frame_old = scale_center(img_from, max(0.05, scale_old))
+        # Нова збільшується
+        scale_new = 0.1 + 0.9 * t
+        frame_new = scale_center(img_to, scale_new)
+        combined = Image.blend(frame_old.convert("RGB"), frame_new.convert("RGB"), t)
+        device.display(combined)
+        time.sleep(0.025)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 😊 HAPPY — дихання + рух вгору-вниз + моргання
+# ─────────────────────────────────────────────────────────────────────────────
+def _do_blink():
+    base = IMGS["happy"]
+    blink = IMGS["blink"]
+    # Плавне закривання
+    steps = 7
+    for i in range(steps):
+        t = i / steps
+        frame = Image.blend(base.convert("RGB"), blink.convert("RGB"), t)
+        device.display(frame)
+        time.sleep(0.018)
+    time.sleep(0.07)
+    # Плавне відкривання
+    for i in range(steps):
+        t = i / steps
+        frame = Image.blend(blink.convert("RGB"), base.convert("RGB"), t)
+        device.display(frame)
+        time.sleep(0.018)
+
 def anim_happy(duration=5.0):
-    base = IMGS["happy"].copy()
+    base = IMGS["happy"]
     t_start = time.time()
     blink_timer = time.time() + random.uniform(2.5, 4.0)
-
-    # Малюємо усмішку поверх картинки
-    smile_img = base.copy()
-    draw = ImageDraw.Draw(smile_img)
-    draw.arc((180, 245, 300, 295), start=0, end=180, fill=(255, 220, 180, 200), width=4)
-
     t = 0.0
+
     while time.time() - t_start < duration:
-        t += 0.08
+        t += 0.07
+        scale = 1.0 + 0.014 * math.sin(t * 1.4)
+        dy = 3.5 * math.sin(t * 1.1)
 
-        # Дихання — масштаб 1.00 → 1.03
-        scale = 1.0 + 0.015 * math.sin(t * 1.5)
-        # Рух вгору-вниз ±4px
-        dy = 4 * math.sin(t * 1.2)
-
-        frame = scale_center(smile_img, scale)
+        frame = scale_center(base, scale)
         frame = shift(frame, dy=dy)
         show(frame)
 
-        # Моргання
         if time.time() >= blink_timer:
-            _do_blink(smile_img)
+            _do_blink()
             blink_timer = time.time() + random.uniform(2.5, 4.0)
 
-        time.sleep(0.04)
+        time.sleep(0.033)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 😑 BLINK — плавне моргання через fade
-# ─────────────────────────────────────────────────────────────────────────────
-def _do_blink(base_img):
-    blink_img = IMGS["blink"]
-    fade(base_img, blink_img, steps=6, delay=0.02)
-    time.sleep(0.08)
-    fade(blink_img, base_img, steps=6, delay=0.02)
-
-def anim_blink(times=3):
-    base = IMGS["happy"]
-    for _ in range(times):
-        _do_blink(base)
-        time.sleep(0.2)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 😲 SURPRISED — стрибок з маленького + брови + рот
+# 😲 SURPRISED — стрибок + пружина (без домальовування)
 # ─────────────────────────────────────────────────────────────────────────────
 def anim_surprised(duration=3.0):
-    base = IMGS["surprised"].copy()
-
-    # Малюємо брови та рот поверх картинки
-    draw = ImageDraw.Draw(base)
-    # Брови
-    draw.arc((100, 55, 210, 95), start=200, end=340, fill=(255, 255, 255, 230), width=5)
-    draw.arc((270, 55, 380, 95), start=200, end=340, fill=(255, 255, 255, 230), width=5)
-    # Рот — кружечок здивування
-    draw.ellipse((210, 240, 270, 300), outline=(255, 255, 255, 220), width=4)
-
-    # Стрибок — від 0.3 до 1.0
-    steps = 18
+    base = IMGS["surprised"]
+    steps = 16
     for i in range(steps):
-        factor = 0.3 + 0.7 * (i / steps)
-        # Пружинний ефект наприкінці
-        if i > steps * 0.7:
-            overshoot = 1.0 + 0.04 * math.sin((i - steps * 0.7) * 3.0)
-            factor = min(factor * overshoot, 1.08)
+        factor = 0.25 + 0.75 * (i / steps)
+        if i > steps * 0.75:
+            spring = 1.0 + 0.05 * math.sin((i - steps * 0.75) * 3.5)
+            factor = min(factor * spring, 1.06)
         frame = scale_center(base, factor)
         show(frame)
-        time.sleep(0.03)
+        time.sleep(0.025)
 
-    # Утримуємо
     t_start = time.time()
     t = 0.0
     while time.time() - t_start < duration:
-        t += 0.08
-        scale = 1.0 + 0.01 * math.sin(t * 2.0)
+        t += 0.07
+        scale = 1.0 + 0.012 * math.sin(t * 2.2)
+        dy = 2.5 * math.sin(t * 1.8)
         frame = scale_center(base, scale)
+        frame = shift(frame, dy=dy)
         show(frame)
-        time.sleep(0.04)
+        time.sleep(0.033)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 😢 SAD — опускання вниз + сльоза
+# 😢 SAD — хитання вниз + сльози (без домальовування рота)
 # ─────────────────────────────────────────────────────────────────────────────
 def anim_sad(duration=5.0):
-    base = IMGS["sad"].copy()
-
+    base = IMGS["sad"]
     t_start = time.time()
     t = 0.0
-    tear_y = 180  # початок сльози
 
     while time.time() - t_start < duration:
-        t += 0.06
-        # Повільне опускання вниз ±8px
-        dy = 8 * math.sin(t * 0.6)
+        t += 0.05
+        dy = 7 * math.sin(t * 0.55)
 
         frame = base.copy()
-
-        # Малюємо сльозу
         draw = ImageDraw.Draw(frame)
-        tear_offset = int(tear_y + (time.time() - t_start) * 18) % 140
-        # Ліва сльоза
-        draw.ellipse((152, 180 + tear_offset, 162, 195 + tear_offset),
-                     fill=(100, 180, 255, 200))
-        # Права сльоза (трохи зміщена по часу)
-        tear_offset2 = (tear_offset + 30) % 140
-        draw.ellipse((318, 180 + tear_offset2, 328, 195 + tear_offset2),
-                     fill=(100, 180, 255, 200))
 
-        # Сумний рот
-        draw.arc((180, 260, 300, 300), start=180, end=360,
-                 fill=(200, 200, 255, 180), width=4)
+        # Сльози — падаючі краплі
+        elapsed = time.time() - t_start
+        tear_offset_l = int(elapsed * 20) % 130
+        tear_offset_r = int(elapsed * 20 + 45) % 130
+        # Ліва сльоза
+        draw.ellipse((148, 175 + tear_offset_l, 160, 190 + tear_offset_l),
+                     fill=(120, 190, 255, 210))
+        # Права сльоза
+        draw.ellipse((315, 175 + tear_offset_r, 327, 190 + tear_offset_r),
+                     fill=(120, 190, 255, 210))
 
         frame = shift(frame, dy=dy)
         show(frame)
-        time.sleep(0.04)
+        time.sleep(0.033)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 😠 ANGRY — шейк + червоний оверлей + вогники
+# 😠 ANGRY — шейк + червоний пульс + вогники
 # ─────────────────────────────────────────────────────────────────────────────
-FIRE_CHARS = ["🔥", "💢", "!!!"]
-
 def anim_angry(duration=4.0):
-    base = IMGS["angry"].copy()
+    base = IMGS["angry"]
     t_start = time.time()
     frame_count = 0
 
     while time.time() - t_start < duration:
-        # Шейк — хаотичне тремтіння
-        dx = random.randint(-8, 8)
+        dx = random.randint(-9, 9)
         dy = random.randint(-4, 4)
 
-        # Пульсуючий червоний оверлей
-        pulse = abs(math.sin(frame_count * 0.3))
-        red_alpha = int(40 + 50 * pulse)
+        pulse = abs(math.sin(frame_count * 0.28))
+        red_alpha = int(35 + 55 * pulse)
 
-        frame = base.copy()
-        frame = color_overlay(frame, (255, 30, 0), red_alpha)
+        frame = color_overlay(base, (255, 20, 0), red_alpha)
         frame = shift(frame, dx=dx, dy=dy)
-
-        # Малюємо вогники по кутах
         draw = ImageDraw.Draw(frame)
-        if frame_count % 4 < 2:
-            # Вогники у кутах (комедійний стиль)
-            for fx, fy in [(10, 10), (430, 10), (10, 270), (430, 270)]:
-                draw.ellipse((fx, fy, fx+30, fy+40), fill=(255, 100+random.randint(0,50), 0, 200))
-                draw.ellipse((fx+5, fy-10, fx+25, fy+15), fill=(255, 200, 0, 180))
-        # Знак оклику по центру
-        if frame_count % 8 < 4:
-            draw.text((220, 15), "!!!", fill=(255, 255, 0, 230))
+
+        # Вогники по кутах (мигають)
+        if frame_count % 3 < 2:
+            for fx, fy in [(8, 8), (435, 8), (8, 265), (435, 265)]:
+                r = random.randint(30, 50)
+                draw.ellipse((fx, fy, fx+r, fy+r+10),
+                             fill=(255, random.randint(60, 120), 0, 220))
+                draw.ellipse((fx+6, fy-8, fx+r-6, fy+12),
+                             fill=(255, 210, 0, 190))
+
+        # !!! по центру зверху
+        if frame_count % 6 < 3:
+            draw.text((210, 12), "!!!", fill=(255, 255, 0))
 
         show(frame)
         frame_count += 1
-        time.sleep(0.05)
+        time.sleep(0.045)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🤔 THINKING — хитання + формули
+# 🤔 THINKING — хитання + формули що з'являються
 # ─────────────────────────────────────────────────────────────────────────────
 FORMULAS = [
-    "E = mc²",
-    "π = 3.14159...",
-    "∑(n²) = ?",
-    "42 = ?",
-    "AI > 0",
-    "f(x) = ax²+b",
-    "∞ / ∞ = ?",
-    "log₂(256) = 8",
+    "E = mc²", "π ≈ 3.14159", "∑(n²) = ?",
+    "42 = ???", "f(x) = ax²+b", "∞ / ∞ = ?",
+    "log₂(256) = 8", "AI > 0", "x = (-b±√D)/2a",
 ]
 
 def anim_thinking(duration=5.0):
-    base = IMGS["thinking"].copy()
+    base = IMGS["thinking"]
     t_start = time.time()
     t = 0.0
     formula_timer = 0.0
     current_formula = random.choice(FORMULAS)
-    formula_alpha = 0
-    formula_x = random.randint(280, 380)
-    formula_y = random.randint(20, 80)
+    formula_alpha = 255
+    formula_x = random.randint(260, 370)
+    formula_y = random.randint(18, 70)
 
     while time.time() - t_start < duration:
-        t += 0.07
-        # Хитання вліво-вправо ±12px
-        dx = 12 * math.sin(t * 1.0)
-        # Легкий нахил (вгору-вниз ±3px)
-        dy = 3 * math.sin(t * 2.0)
+        t += 0.06
+        dx = 11 * math.sin(t * 0.9)
+        dy = 2.5 * math.sin(t * 1.8)
 
         frame = base.copy()
+        draw = ImageDraw.Draw(frame)
 
-        # Формула з'являється і зникає
-        formula_timer += 0.07
-        if formula_timer > 2.5:
+        # Формула
+        formula_timer += 0.06
+        if formula_timer > 2.2:
             formula_timer = 0.0
             current_formula = random.choice(FORMULAS)
-            formula_x = random.randint(250, 380)
-            formula_y = random.randint(15, 80)
+            formula_x = random.randint(250, 370)
+            formula_y = random.randint(15, 70)
             formula_alpha = 255
 
-        # Fade формули
         if formula_alpha > 0:
-            draw = ImageDraw.Draw(frame)
             draw.text((formula_x, formula_y), current_formula,
-                      fill=(0, 220, 255, formula_alpha))
-            formula_alpha = max(0, formula_alpha - 8)
+                      fill=(0, 210, 255, formula_alpha))
+            formula_alpha = max(0, formula_alpha - 10)
 
-        # Крапки "думає" внизу
-        dots = "." * (int(time.time() * 2) % 4)
-        draw = ImageDraw.Draw(frame)
-        draw.text((220, 285), f"думаю{dots}", fill=(150, 150, 255, 200))
+        # Крапки "думаю..."
+        dots = "." * (int(time.time() * 2.5) % 4)
+        draw.text((210, 286), f"думаю{dots}", fill=(160, 160, 255, 210))
 
         frame = shift(frame, dx=dx, dy=dy)
         show(frame)
-        time.sleep(0.04)
+        time.sleep(0.033)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 🎬 ГОЛОВНИЙ ЦИКЛ
@@ -280,38 +336,32 @@ def anim_thinking(duration=5.0):
 def run():
     print("🤖 AIKO очі запущено! Ctrl+C щоб зупинити")
 
-    # Початкова поява
-    black = Image.new("RGB", (W, H), (0, 0, 0))
-    fade(black, IMGS["happy"], steps=15, delay=0.04)
+    # Початкова поява — burst з чорного
+    black = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    transition_burst(black, IMGS["happy"])
 
     while True:
         print("😊 Happy...")
         anim_happy(duration=5.0)
 
-        print("😑 Blink...")
-        anim_blink(times=2)
-
-        print("😲 Surprised!")
-        fade(IMGS["happy"], IMGS["surprised"], steps=8, delay=0.03)
+        print("💥 Burst → Surprised!")
+        transition_burst(IMGS["happy"], IMGS["surprised"])
         anim_surprised(duration=3.0)
 
-        print("😑 Blink...")
-        anim_blink(times=1)
-
-        print("😢 Sad...")
-        fade(IMGS["surprised"], IMGS["sad"], steps=12, delay=0.04)
+        print("🌊 Wave → Sad...")
+        transition_wave(IMGS["surprised"], IMGS["sad"])
         anim_sad(duration=5.0)
 
-        print("😠 Angry!")
-        fade(IMGS["sad"], IMGS["angry"], steps=8, delay=0.03)
+        print("⚡ Flash → Angry!")
+        transition_flash(IMGS["sad"], IMGS["angry"])
         anim_angry(duration=4.0)
 
-        print("🤔 Thinking...")
-        fade(IMGS["angry"], IMGS["thinking"], steps=10, delay=0.04)
+        print("📺 Glitch → Thinking...")
+        transition_glitch(IMGS["angry"], IMGS["thinking"])
         anim_thinking(duration=5.0)
 
-        print("😊 Happy знову!")
-        fade(IMGS["thinking"], IMGS["happy"], steps=12, delay=0.04)
+        print("🌀 SpinZoom → Happy!")
+        transition_spinzoom(IMGS["thinking"], IMGS["happy"])
 
 if __name__ == "__main__":
     try:
