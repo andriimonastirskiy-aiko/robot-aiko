@@ -18,7 +18,6 @@ FPS  = 30
 DT   = 1.0 / FPS
 
 # ── Кольори ───────────────────────────────────────────────────────────────────
-C_BG       = (0,   0,   120)   # яскраво-червоний фон (BGR)
 C_GLOW     = (30,  30,  255)   # червоний glow яскравий (BGR)
 C_GLOW_DIM = (20,  20,  160)   # червоний glow dim (BGR)
 C_SCLERA   = (255, 255, 255)
@@ -36,13 +35,13 @@ EW = 60
 EH = 68
 ER = 26
 
-# Рот — ТІ САМІ координати що і в SAD для плавного морфінгу
+# Рот
 MX = W // 2   # 240
 MY = 272
 MW = 90
 
 LID_FRAC_ANGRY = 0.50   # 50% висоти ока
-LID_SKEW_PX    = 16     # скос: ANGRY — внутрішній край нижче (протилежно до SAD)
+LID_SKEW_PX    = 16     # скос: внутрішній край нижче
 
 # ── Утиліти ───────────────────────────────────────────────────────────────────
 def clamp(v, lo, hi): return max(lo, min(hi, v))
@@ -69,8 +68,6 @@ def draw_glow(draw, cx, cy, hw, hh, r, color):
         )
 
 # ── Повіка ANGRY — скос протилежний до SAD ────────────────────────────────────
-# SAD:   зовнішній край нижче → ╭────╮ (сумно)
-# ANGRY: внутрішній край нижче → ────╮╭──── (злісно)
 def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
                    bg_color, glow_color, mirror=False):
     if lid_frac <= 0.0:
@@ -81,7 +78,6 @@ def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
     bot_y  = cy - hh + lid_px
     rr     = ER
 
-    # Верхня дуга (ідентична SAD)
     arc_pts = []
 
     for deg in range(180, 271, 5):
@@ -96,15 +92,12 @@ def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
         y = (top_y + rr)   + rr * math.sin(rad)
         arc_pts.append((x, y))
 
-    # Низ зі скосом — ANGRY: внутрішній край нижче (протилежно до SAD)
-    # Ліве oko (mirror=False): правий (внутрішній) нижче, лівий (зовнішній) вище
-    # Праве oko (mirror=True):  лівий  (внутрішній) нижче, правий (зовнішній) вище
     if not mirror:
-        left_y  = int(bot_y + sway_px)                  # зовнішній — вище
-        right_y = int(bot_y + LID_SKEW_PX + sway_px)    # внутрішній — нижче
+        left_y  = int(bot_y + sway_px)
+        right_y = int(bot_y + LID_SKEW_PX + sway_px)
     else:
-        left_y  = int(bot_y + LID_SKEW_PX + sway_px)    # внутрішній — нижче
-        right_y = int(bot_y + sway_px)                   # зовнішній — вище
+        left_y  = int(bot_y + LID_SKEW_PX + sway_px)
+        right_y = int(bot_y + sway_px)
 
     poly = arc_pts + [
         (cx + hw, right_y),
@@ -113,7 +106,6 @@ def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
 
     draw.polygon(poly, fill=bg_color)
 
-    # Лінія-контур скосу
     draw.line(
         [(cx - hw + 4, left_y),
          (cx + hw - 4, right_y)],
@@ -124,7 +116,7 @@ def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
 def draw_eye(draw, cx, cy, hw, hh,
              lid_frac=0.0, sway_px=0,
              gaze_x=0.0, gaze_y=0.0,
-             glow_color=C_GLOW_DIM, bg_color=C_BG,
+             glow_color=C_GLOW_DIM, bg_color=(0, 0, 120),
              mirror=False):
 
     draw_glow(draw, cx, cy, hw, hh, ER, glow_color)
@@ -134,7 +126,6 @@ def draw_eye(draw, cx, cy, hw, hh,
         radius=ER, fill=C_SCLERA
     )
 
-    # Зіниця — трохи вниз + до центру (пильний злісний погляд)
     iris_hw = int(hw * 0.50)
     iris_hh = int(hh * 0.50)
     max_gx  = max(1, hw - iris_hw - 4)
@@ -164,7 +155,6 @@ def draw_eye(draw, cx, cy, hw, hh,
                   sh_x + sh_r + sh2_r * 2, sh_y + sh2_r),
                  fill=(200, 230, 255))
 
-    # Повіка ANGRY
     if lid_frac > 0.01:
         draw_lid_angry(draw, cx, cy, hw, hh,
                        lid_frac=lid_frac,
@@ -173,19 +163,18 @@ def draw_eye(draw, cx, cy, hw, hh,
                        glow_color=glow_color,
                        mirror=mirror)
 
-    # Контур
     gc_outline = tuple(min(255, c + 40) for c in glow_color)
     draw.rounded_rectangle(
         (cx - hw, cy - hh, cx + hw, cy + hh),
         radius=ER, outline=gc_outline, width=3
     )
 
-# ── Рот ANGRY — прямокутник з 6 зубами (завжди відкритий) ────────────────────
+# ── Рот ANGRY — прямокутник з 6 зубами ───────────────────────────────────────
 def draw_mouth_angry(draw, morph=1.0):
     alpha  = clamp(morph, 0.0, 1.0)
-    m_w    = int(MW * alpha)          # ширина рота
-    m_h    = int(32 * alpha)          # висота рота
-    m_r    = 8                        # радіус заокруглення
+    m_w    = int(MW * alpha)
+    m_h    = int(32 * alpha)
+    m_r    = 8
 
     if m_w < 8 or m_h < 8:
         return
@@ -195,7 +184,6 @@ def draw_mouth_angry(draw, morph=1.0):
     x1 = MX + m_w
     y1 = MY + m_h // 2
 
-    # Тіло рота — темно-червоний (порожнина) (BGR)
     mouth_fill = (0, 0, 60)
     draw.rounded_rectangle((x0, y0, x1, y1),
                             radius=m_r,
@@ -203,7 +191,6 @@ def draw_mouth_angry(draw, morph=1.0):
                             outline=C_GLOW_DIM,
                             width=3)
 
-    # 6 зубів — рівномірно розподілені
     n_teeth  = 6
     tooth_w  = int((m_w * 2 - 16) / n_teeth) - 2
     tooth_h  = max(4, int(m_h * 0.55))
@@ -224,21 +211,22 @@ def draw_mouth_angry(draw, morph=1.0):
 
 # ── Рендер кадру ──────────────────────────────────────────────────────────────
 def render(lid_frac=LID_FRAC_ANGRY, sway_px=0,
-           mouth_morph=1.0, bg=C_BG):
+           mouth_morph=1.0, bg=(0, 0, 120),
+           gaze_x_offset=0.0):
     img  = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(img)
 
-    # Ліве oko — gaze до центру (gaze_x > 0 = вправо)
     draw_eye(draw, BASE_EL_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
-             gaze_x=0.15, gaze_y=0.20,
+             gaze_x=0.15 + gaze_x_offset,
+             gaze_y=0.20,
              glow_color=C_GLOW_DIM, bg_color=bg,
              mirror=False)
 
-    # Праве oko — gaze до центру (gaze_x < 0 = вліво)
     draw_eye(draw, BASE_ER_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
-             gaze_x=-0.15, gaze_y=0.20,
+             gaze_x=-0.15 - gaze_x_offset,
+             gaze_y=0.20,
              glow_color=C_GLOW_DIM, bg_color=bg,
              mirror=True)
 
@@ -246,41 +234,30 @@ def render(lid_frac=LID_FRAC_ANGRY, sway_px=0,
 
     device.display(img)
 
-# ── Моргання (рот залишається відкритим) ─────────────────────────────────────
-def _blink(sway_px=0):
-    steps = 7
-    for i in range(steps):
-        t = ease_inout(i / steps)
-        render(lid_frac=clamp(LID_FRAC_ANGRY + t * (1.0 - LID_FRAC_ANGRY), 0.0, 1.0),
-               sway_px=sway_px)
-        time.sleep(0.013)
-    render(lid_frac=1.0, sway_px=sway_px)
-    time.sleep(0.05)
-    for i in range(steps):
-        t = ease_inout(1.0 - i / steps)
-        render(lid_frac=clamp(LID_FRAC_ANGRY + t * (1.0 - LID_FRAC_ANGRY), 0.0, 1.0),
-               sway_px=sway_px)
-        time.sleep(0.013)
-
 # ── Анімація ANGRY ────────────────────────────────────────────────────────────
 def anim_angry():
     print("😠 Angry — Ctrl+C для виходу")
 
-    t       = 0.0
-    blink_t = time.time() + random.uniform(2.5, 5.0)
+    t = 0.0
 
     while True:
         t += DT
 
+        # Пульсуючий червоний фон (BGR): синій канал 80..130
+        bg_val = int(80 + 50 * (0.5 + 0.5 * math.sin(t * 2.5)))
+        bg = (0, 0, bg_val)
+
         # Легке тремтіння повік — злісне напруження
         sway_px = int(1.5 * math.sin(t * 1.8))
 
-        render(lid_frac=LID_FRAC_ANGRY,
-               sway_px=sway_px)
+        # Плавні ривки очей до центру і назад
+        gaze_phase  = 0.5 + 0.5 * math.sin(t * 1.2)
+        gaze_offset = ease_inout(gaze_phase) * 0.35
 
-        if time.time() >= blink_t:
-            _blink(sway_px=sway_px)
-            blink_t = time.time() + random.uniform(2.5, 5.0)
+        render(lid_frac=LID_FRAC_ANGRY,
+               sway_px=sway_px,
+               bg=bg,
+               gaze_x_offset=gaze_offset)
 
         time.sleep(DT)
 
