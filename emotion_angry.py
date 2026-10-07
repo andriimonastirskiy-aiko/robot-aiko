@@ -17,15 +17,18 @@ W, H = 480, 320
 FPS  = 15
 DT   = 1.0 / FPS
 
+# ── Статичний фон (малюється ОДИН РАЗ) ───────────────────────────────────────
+BG_COLOR = (120, 20, 10)
+BG_IMAGE = Image.new("RGB", (W, H), BG_COLOR)
+
 # ── Кольори ───────────────────────────────────────────────────────────────────
-C_GLOW     = (30,  30,  255)
 C_GLOW_DIM = (20,  20,  160)
 C_SCLERA   = (255, 255, 255)
 C_IRIS     = (255, 140, 30 )
 C_PUPIL    = (0,   0,   0  )
 C_SHINE    = (255, 255, 255)
 C_TOOTH    = (240, 240, 240)
-C_EXCLAIM  = (0, 220, 255)     # жовтий (BGR swap для ILI9488)
+C_EXCLAIM  = (0, 220, 255)
 
 # ── Геометрія ─────────────────────────────────────────────────────────────────
 BASE_EL_X = 118
@@ -54,7 +57,6 @@ def clamp(v, lo, hi): return max(lo, min(hi, v))
 def lerp(a, b, t): return a + (b - a) * clamp(t, 0.0, 1.0)
 
 def cubic_ease_in_out(t):
-    """Кубічна крива: дуже плавний старт і кінець"""
     t = clamp(t, 0.0, 1.0)
     if t < 0.5:
         return 4.0 * t * t * t
@@ -62,26 +64,8 @@ def cubic_ease_in_out(t):
         p = 2.0 * t - 2.0
         return 0.5 * p * p * p + 1.0
 
-# ── Glow ──────────────────────────────────────────────────────────────────────
-def draw_glow(draw, cx, cy, hw, hh, r, color):
-    widths  = [12, 8]
-    expands = [4,  10]
-    brights = [220, 120]
-    for i in range(2):
-        expand = expands[i]
-        bright = brights[i]
-        gc     = tuple(min(255, int(c * bright / 255)) for c in color)
-        draw.rounded_rectangle(
-            (cx - hw - expand, cy - hh - expand,
-             cx + hw + expand, cy + hh + expand),
-            radius=min(r + expand // 2, hw + expand),
-            outline=gc,
-            width=widths[i]
-        )
-
 # ── Повіка ANGRY ──────────────────────────────────────────────────────────────
-def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
-                   bg_color, glow_color, mirror=False):
+def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, mirror=False):
     if lid_frac <= 0.0:
         return
 
@@ -103,35 +87,33 @@ def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
         arc_pts.append((x, y))
 
     if not mirror:
-        left_y  = int(bot_y + sway_px)
-        right_y = int(bot_y + LID_SKEW_PX + sway_px)
+        left_y  = int(bot_y)
+        right_y = int(bot_y + LID_SKEW_PX)
     else:
-        left_y  = int(bot_y + LID_SKEW_PX + sway_px)
-        right_y = int(bot_y + sway_px)
+        left_y  = int(bot_y + LID_SKEW_PX)
+        right_y = int(bot_y)
 
     poly = arc_pts + [
         (cx + hw, right_y),
         (cx - hw, left_y),
     ]
-    draw.polygon(poly, fill=bg_color)
+    draw.polygon(poly, fill=BG_COLOR)
     draw.line(
         [(cx - hw + 4, left_y), (cx + hw - 4, right_y)],
-        fill=glow_color, width=3
+        fill=C_GLOW_DIM, width=3
     )
 
 # ── Одне oko ──────────────────────────────────────────────────────────────────
 def draw_eye(draw, cx, cy, hw, hh,
-             lid_frac=0.0, sway_px=0,
+             lid_frac=0.0,
              gaze_x=0.0, gaze_y=0.0,
              eye_offset_px=0,
-             glow_color=C_GLOW_DIM, bg_color=(120, 20, 10),
              mirror=False):
     if not mirror:
         real_cx = cx + eye_offset_px
     else:
         real_cx = cx - eye_offset_px
 
-    draw_glow(draw, real_cx, cy, hw, hh, ER, glow_color)
     draw.rounded_rectangle(
         (real_cx - hw, cy - hh, real_cx + hw, cy + hh),
         radius=ER, fill=C_SCLERA
@@ -171,12 +153,9 @@ def draw_eye(draw, cx, cy, hw, hh,
     if lid_frac > 0.01:
         draw_lid_angry(draw, real_cx, cy, hw, hh,
                        lid_frac=lid_frac,
-                       sway_px=sway_px,
-                       bg_color=bg_color,
-                       glow_color=glow_color,
                        mirror=mirror)
 
-    gc_outline = tuple(min(255, c + 40) for c in glow_color)
+    gc_outline = tuple(min(255, c + 40) for c in C_GLOW_DIM)
     draw.rounded_rectangle(
         (real_cx - hw, cy - hh, real_cx + hw, cy + hh),
         radius=ER, outline=gc_outline, width=3
@@ -225,17 +204,14 @@ _exclaims = []
 _next_exclaim_t = 0.0
 
 def update_exclaims(now):
-    """Рандомно генерує та прибирає знаки оклику"""
     global _next_exclaim_t
 
-    # Прибираємо старі (живуть 1 секунду)
     active = [e for e in _exclaims if now - e['born'] < 1.0]
     _exclaims.clear()
     _exclaims.extend(active)
 
-    # Час для нового?
     if now >= _next_exclaim_t:
-        count = random.randint(2, 3)
+        count  = random.randint(2, 3)
         used_x = []
         for _ in range(count):
             for attempt in range(20):
@@ -256,28 +232,28 @@ def draw_exclaims(draw):
                   fill=C_EXCLAIM, anchor="mt")
 
 # ── Рендер кадру ──────────────────────────────────────────────────────────────
-def render(now, lid_frac=LID_FRAC_ANGRY, sway_px=0,
-           mouth_morph=1.0, bg=(120, 20, 10),
+def render(now, lid_frac=LID_FRAC_ANGRY,
+           mouth_morph=1.0,
            eye_offset_px=0, gaze_x=0.0):
-    img  = Image.new("RGB", (W, H), bg)
+
+    # Копіюємо статичний фон — НЕ створюємо новий Image кожен кадр
+    img  = BG_IMAGE.copy()
     draw = ImageDraw.Draw(img)
 
     base_gaze_y = 0.20
 
     draw_eye(draw, BASE_EL_X, BASE_EY, EW, EH,
-             lid_frac=lid_frac, sway_px=sway_px,
+             lid_frac=lid_frac,
              gaze_x=gaze_x,
              gaze_y=base_gaze_y,
              eye_offset_px=eye_offset_px,
-             glow_color=C_GLOW_DIM, bg_color=bg,
              mirror=False)
 
     draw_eye(draw, BASE_ER_X, BASE_EY, EW, EH,
-             lid_frac=lid_frac, sway_px=sway_px,
+             lid_frac=lid_frac,
              gaze_x=-gaze_x,
              gaze_y=base_gaze_y,
              eye_offset_px=eye_offset_px,
-             glow_color=C_GLOW_DIM, bg_color=bg,
              mirror=True)
 
     draw_mouth_angry(draw, morph=mouth_morph)
@@ -291,15 +267,13 @@ def render(now, lid_frac=LID_FRAC_ANGRY, sway_px=0,
 def anim_angry():
     print("😠 Angry — Ctrl+C для виходу")
 
-    t = 0.0
-
     STATE_IDLE     = 0
     STATE_MOVE_IN  = 1
     STATE_HOLD     = 2
     STATE_MOVE_OUT = 3
 
     MOVE_DURATION = 1.2
-    HOLD_DURATION = 2.0   # затримка в центрі 2 секунди
+    HOLD_DURATION = 2.0
     EYE_SHIFT_PX  = 14
     GAZE_TARGET   = 1.0
 
@@ -310,22 +284,13 @@ def anim_angry():
     eye_offset_px = 0.0
     gaze_x        = 0.0
 
-    last_frame = time.time()
-
     while True:
-        now   = time.time()
-        delta = now - last_frame
-        last_frame = now
-        t += delta
+        frame_start = time.time()
+        now         = frame_start
 
-        bg = (120, 20, 10)
-
-        # Легке тремтіння повік
-        sway_px = int(1.5 * math.sin(t * 1.8))
-
-        # ── Машина станів ────────────────────────────────────────────────────
         elapsed = now - state_start
 
+        # ── Машина станів ────────────────────────────────────────────────────
         if state == STATE_IDLE:
             eye_offset_px = 0.0
             gaze_x        = 0.0
@@ -362,12 +327,13 @@ def anim_angry():
 
         render(now,
                lid_frac=LID_FRAC_ANGRY,
-               sway_px=sway_px,
-               bg=bg,
                eye_offset_px=int(eye_offset_px),
                gaze_x=gaze_x)
 
-        time.sleep(DT)
+        # Адаптивний sleep — чекаємо лише залишок часу кадру
+        frame_time = time.time() - frame_start
+        sleep_time = max(0.0, DT - frame_time)
+        time.sleep(sleep_time)
 
 # ── Старт ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
