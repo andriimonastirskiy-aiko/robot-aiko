@@ -5,7 +5,7 @@
 
 from luma.lcd.device import ili9488
 from luma.core.interface.serial import spi
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import time, math, random
 
 # ── Дисплей ───────────────────────────────────────────────────────────────────
@@ -14,8 +14,6 @@ device = ili9488(serial, width=480, height=320, rotate=0, bgr=True)
 device.backlight(True)
 
 W, H = 480, 320
-FPS  = 30
-DT   = 1.0 / FPS
 
 # ── Кольори ───────────────────────────────────────────────────────────────────
 C_GLOW     = (30,  30,  255)
@@ -25,6 +23,7 @@ C_IRIS     = (255, 140, 30 )
 C_PUPIL    = (0,   0,   0  )
 C_SHINE    = (255, 255, 255)
 C_TOOTH    = (240, 240, 240)
+C_EXCLAIM  = (255, 220, 0  )   # жовтий
 
 # ── Геометрія ─────────────────────────────────────────────────────────────────
 BASE_EL_X = 118
@@ -41,15 +40,25 @@ MW = 90
 LID_FRAC_ANGRY = 0.50
 LID_SKEW_PX    = 16
 
+# ── Шрифт ─────────────────────────────────────────────────────────────────────
+try:
+    FONT_EXCLAIM = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 52)
+except:
+    FONT_EXCLAIM = ImageFont.load_default()
+
 # ── Утиліти ───────────────────────────────────────────────────────────────────
 def clamp(v, lo, hi): return max(lo, min(hi, v))
 
 def lerp(a, b, t): return a + (b - a) * clamp(t, 0.0, 1.0)
 
-def ease_in_out(t):
-    """Плавна функція: повільний старт і кінець"""
+def cubic_ease_in_out(t):
+    """Кубічна крива: дуже плавний старт і кінець"""
     t = clamp(t, 0.0, 1.0)
-    return t * t * (3.0 - 2.0 * t)
+    if t < 0.5:
+        return 4.0 * t * t * t
+    else:
+        p = 2.0 * t - 2.0
+        return 0.5 * p * p * p + 1.0
 
 # ── Glow ──────────────────────────────────────────────────────────────────────
 def draw_glow(draw, cx, cy, hw, hh, r, color):
@@ -115,18 +124,10 @@ def draw_eye(draw, cx, cy, hw, hh,
              eye_offset_px=0,
              glow_color=C_GLOW_DIM, bg_color=(0, 0, 120),
              mirror=False):
-    """
-    eye_offset_px — зміщення ВСЬОГО ока (cx) до центру екрану:
-      ліве oko: +eye_offset_px (вправо)
-      праве oko: -eye_offset_px (вліво)
-    gaze_x — зміщення зіниці/райдужки всередині ока (-1.0 ... +1.0)
-    """
-
-    # Зміщуємо центр усього ока
     if not mirror:
-        real_cx = cx + eye_offset_px   # ліве — вправо
+        real_cx = cx + eye_offset_px
     else:
-        real_cx = cx - eye_offset_px   # праве — вліво
+        real_cx = cx - eye_offset_px
 
     draw_glow(draw, real_cx, cy, hw, hh, ER, glow_color)
     draw.rounded_rectangle(
@@ -217,14 +218,51 @@ def draw_mouth_angry(draw, morph=1.0):
                                 radius=tooth_r,
                                 fill=C_TOOTH)
 
+# ── Знаки оклику ──────────────────────────────────────────────────────────────
+# Кожен знак: {'x': int, 'y': int, 'born': float}
+_exclaims = []
+_next_exclaim_t = 0.0
+
+def update_exclaims(now):
+    """Рандомно генерує та прибирає знаки оклику"""
+    global _next_exclaim_t
+
+    # Прибираємо старі (живуть 1 секунду)
+    active = [e for e in _exclaims if now - e['born'] < 1.0]
+    _exclaims.clear()
+    _exclaims.extend(active)
+
+    # Час для нового?
+    if now >= _next_exclaim_t:
+        count = random.randint(2, 3)
+        # Рандомні X позиції у верхній зоні (y: 10–60)
+        used_x = []
+        for _ in range(count):
+            for attempt in range(20):
+                nx = random.randint(30, W - 30)
+                # Не накладаємо знаки один на одного
+                if all(abs(nx - ux) > 50 for ux in used_x):
+                    used_x.append(nx)
+                    _exclaims.append({
+                        'x': nx,
+                        'y': random.randint(10, 55),
+                        'born': now
+                    })
+                    break
+        _next_exclaim_t = now + random.uniform(2.0, 4.0)
+
+def draw_exclaims(draw):
+    for e in _exclaims:
+        draw.text((e['x'], e['y']), "!", font=FONT_EXCLAIM,
+                  fill=C_EXCLAIM, anchor="mt")
+
 # ── Рендер кадру ──────────────────────────────────────────────────────────────
-def render(lid_frac=LID_FRAC_ANGRY, sway_px=0,
+def render(now, lid_frac=LID_FRAC_ANGRY, sway_px=0,
            mouth_morph=1.0, bg=(0, 0, 120),
            eye_offset_px=0, gaze_x=0.0):
     img  = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(img)
 
-    # Базовий gaze_y — очі дивляться трохи вниз (злобно)
     base_gaze_y = 0.20
 
     draw_eye(draw, BASE_EL_X, BASE_EY, EW, EH,
@@ -244,6 +282,10 @@ def render(lid_frac=LID_FRAC_ANGRY, sway_px=0,
              mirror=True)
 
     draw_mouth_angry(draw, morph=mouth_morph)
+
+    update_exclaims(now)
+    draw_exclaims(draw)
+
     device.display(img)
 
 # ── Анімація ANGRY ────────────────────────────────────────────────────────────
@@ -252,35 +294,32 @@ def anim_angry():
 
     t = 0.0
 
-    # ── Машина станів ────────────────────────────────────────────────────────
-    # IDLE     → чекаємо рандом 1.5–3.5с
-    # MOVE_IN  → 0.5с плавно: oko їде на 20px до центру + зіниця до краю
-    # HOLD     → 1.0с стоїть на місці
-    # MOVE_OUT → 0.5с плавно: повертається назад
-    # → IDLE
     STATE_IDLE     = 0
     STATE_MOVE_IN  = 1
     STATE_HOLD     = 2
     STATE_MOVE_OUT = 3
 
-    MOVE_DURATION = 0.5   # секунд на рух
-    HOLD_DURATION = 1.0   # секунд затримки
-    EYE_SHIFT_PX  = 20    # пікселів зміщення всього ока
-    GAZE_TARGET   = 1.0   # зіниця до краю ока (1.0 = максимум)
+    MOVE_DURATION = 0.5
+    HOLD_DURATION = 1.0
+    EYE_SHIFT_PX  = 20
+    GAZE_TARGET   = 1.0
 
     state         = STATE_IDLE
     state_start   = time.time()
     next_idle_t   = time.time() + random.uniform(1.5, 3.0)
 
-    # Поточні значення (для lerp)
     eye_offset_px = 0.0
     gaze_x        = 0.0
 
-    while True:
-        now = time.time()
-        t  += DT
+    last_frame = time.time()
 
-        # Пульсуючий синій фон (сердитий відтінок)
+    while True:
+        now   = time.time()
+        delta = now - last_frame   # реальний час між кадрами
+        last_frame = now
+        t += delta
+
+        # Пульсуючий синій фон
         bg_val = int(80 + 50 * (0.5 + 0.5 * math.sin(t * 2.5)))
         bg = (0, 0, bg_val)
 
@@ -298,8 +337,8 @@ def anim_angry():
                 state_start = now
 
         elif state == STATE_MOVE_IN:
-            # ease_in_out від 0.0 до 1.0 за MOVE_DURATION секунд
-            progress      = ease_in_out(elapsed / MOVE_DURATION)
+            # Кубічна крива — дуже плавно
+            progress      = cubic_ease_in_out(elapsed / MOVE_DURATION)
             eye_offset_px = lerp(0.0, EYE_SHIFT_PX, progress)
             gaze_x        = lerp(0.0, GAZE_TARGET,   progress)
             if elapsed >= MOVE_DURATION:
@@ -316,7 +355,7 @@ def anim_angry():
                 state_start = now
 
         elif state == STATE_MOVE_OUT:
-            progress      = ease_in_out(elapsed / MOVE_DURATION)
+            progress      = cubic_ease_in_out(elapsed / MOVE_DURATION)
             eye_offset_px = lerp(EYE_SHIFT_PX, 0.0, progress)
             gaze_x        = lerp(GAZE_TARGET,   0.0, progress)
             if elapsed >= MOVE_DURATION:
@@ -325,13 +364,12 @@ def anim_angry():
                 state         = STATE_IDLE
                 next_idle_t   = now + random.uniform(1.5, 3.5)
 
-        render(lid_frac=LID_FRAC_ANGRY,
+        render(now,
+               lid_frac=LID_FRAC_ANGRY,
                sway_px=sway_px,
                bg=bg,
                eye_offset_px=int(eye_offset_px),
                gaze_x=gaze_x)
-
-        time.sleep(DT)
 
 # ── Старт ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
