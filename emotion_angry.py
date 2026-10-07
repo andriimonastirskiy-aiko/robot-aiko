@@ -240,8 +240,15 @@ def anim_angry():
 
     t = 0.0
 
+    # Стан імпульсних ривків очей
+    gaze_offset   = 0.0          # поточний зсув (0.0 або 0.55)
+    next_jerk_t   = time.time() + random.uniform(1.5, 3.5)  # коли наступний ривок
+    jerk_end_t    = 0.0          # коли закінчується ривок (повернення)
+    in_jerk       = False        # зараз у ривку?
+
     while True:
-        t += DT
+        now = time.time()
+        t  += DT
 
         # Пульсуючий червоний фон (BGR): синій канал 80..130
         bg_val = int(80 + 50 * (0.5 + 0.5 * math.sin(t * 2.5)))
@@ -250,9 +257,18 @@ def anim_angry():
         # Легке тремтіння повік — злісне напруження
         sway_px = int(1.5 * math.sin(t * 1.8))
 
-        # Плавні ривки очей до центру і назад
-        gaze_phase  = 0.5 + 0.5 * math.sin(t * 1.2)
-        gaze_offset = ease_inout(gaze_phase) * 0.35
+        # Імпульсні ривки очей
+        if not in_jerk and now >= next_jerk_t:
+            # Різкий стрибок до центру
+            in_jerk     = True
+            gaze_offset = 0.55
+            jerk_end_t  = now + random.uniform(0.10, 0.18)  # тримаємо 100-180мс
+
+        if in_jerk and now >= jerk_end_t:
+            # Різке повернення назад
+            in_jerk     = False
+            gaze_offset = 0.0
+            next_jerk_t = now + random.uniform(1.5, 3.5)    # пауза до наступного
 
         render(lid_frac=LID_FRAC_ANGRY,
                sway_px=sway_px,
