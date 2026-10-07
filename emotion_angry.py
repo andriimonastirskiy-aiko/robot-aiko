@@ -14,7 +14,7 @@ device = ili9488(serial, width=480, height=320, rotate=0, bgr=True)
 device.backlight(True)
 
 W, H = 480, 320
-FPS  = 20
+FPS  = 15
 DT   = 1.0 / FPS
 
 # ── Кольори ───────────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ def draw_eye(draw, cx, cy, hw, hh,
              lid_frac=0.0, sway_px=0,
              gaze_x=0.0, gaze_y=0.0,
              eye_offset_px=0,
-             glow_color=C_GLOW_DIM, bg_color=(0, 0, 120),
+             glow_color=C_GLOW_DIM, bg_color=(120, 20, 10),
              mirror=False):
     if not mirror:
         real_cx = cx + eye_offset_px
@@ -257,7 +257,7 @@ def draw_exclaims(draw):
 
 # ── Рендер кадру ──────────────────────────────────────────────────────────────
 def render(now, lid_frac=LID_FRAC_ANGRY, sway_px=0,
-           mouth_morph=1.0, bg=(0, 0, 120),
+           mouth_morph=1.0, bg=(120, 20, 10),
            eye_offset_px=0, gaze_x=0.0):
     img  = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(img)
@@ -318,9 +318,7 @@ def anim_angry():
         last_frame = now
         t += delta
 
-        # Пульсуючий синій фон
-        bg_val = int(80 + 50 * (0.5 + 0.5 * math.sin(t * 2.5)))
-        bg = (0, 0, bg_val)
+        bg = (120, 20, 10)
 
         # Легке тремтіння повік
         sway_px = int(1.5 * math.sin(t * 1.8))
