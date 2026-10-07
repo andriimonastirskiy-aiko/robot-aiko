@@ -44,6 +44,13 @@ LID_SKEW_PX    = 16
 # ── Утиліти ───────────────────────────────────────────────────────────────────
 def clamp(v, lo, hi): return max(lo, min(hi, v))
 
+def lerp(a, b, t): return a + (b - a) * clamp(t, 0.0, 1.0)
+
+def ease_in_out(t):
+    """Плавна функція: повільний старт і кінець"""
+    t = clamp(t, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
 # ── Glow ──────────────────────────────────────────────────────────────────────
 def draw_glow(draw, cx, cy, hw, hh, r, color):
     widths  = [12, 8]
@@ -105,13 +112,25 @@ def draw_lid_angry(draw, cx, cy, hw, hh, lid_frac, sway_px,
 def draw_eye(draw, cx, cy, hw, hh,
              lid_frac=0.0, sway_px=0,
              gaze_x=0.0, gaze_y=0.0,
-             snap_px=0,
+             eye_offset_px=0,
              glow_color=C_GLOW_DIM, bg_color=(0, 0, 120),
              mirror=False):
+    """
+    eye_offset_px — зміщення ВСЬОГО ока (cx) до центру екрану:
+      ліве oko: +eye_offset_px (вправо)
+      праве oko: -eye_offset_px (вліво)
+    gaze_x — зміщення зіниці/райдужки всередині ока (-1.0 ... +1.0)
+    """
 
-    draw_glow(draw, cx, cy, hw, hh, ER, glow_color)
+    # Зміщуємо центр усього ока
+    if not mirror:
+        real_cx = cx + eye_offset_px   # ліве — вправо
+    else:
+        real_cx = cx - eye_offset_px   # праве — вліво
+
+    draw_glow(draw, real_cx, cy, hw, hh, ER, glow_color)
     draw.rounded_rectangle(
-        (cx - hw, cy - hh, cx + hw, cy + hh),
+        (real_cx - hw, cy - hh, real_cx + hw, cy + hh),
         radius=ER, fill=C_SCLERA
     )
 
@@ -123,15 +142,7 @@ def draw_eye(draw, cx, cy, hw, hh,
     off_x = int(clamp(gaze_x * max_gx, -max_gx, max_gx))
     off_y = int(clamp(gaze_y * max_gy, -max_gy, max_gy))
 
-    # snap_px: ліве око рухається вправо (до центру), праве — вліво
-    if not mirror:
-        off_x += snap_px
-    else:
-        off_x -= snap_px
-
-    off_x = int(clamp(off_x, -max_gx, max_gx))
-
-    icx, icy = cx + off_x, cy + off_y
+    icx, icy = real_cx + off_x, cy + off_y
 
     dark = tuple(max(0, c - 60) for c in C_IRIS)
     draw.ellipse((icx - iris_hw, icy - iris_hh,
@@ -155,7 +166,7 @@ def draw_eye(draw, cx, cy, hw, hh,
                  fill=(200, 230, 255))
 
     if lid_frac > 0.01:
-        draw_lid_angry(draw, cx, cy, hw, hh,
+        draw_lid_angry(draw, real_cx, cy, hw, hh,
                        lid_frac=lid_frac,
                        sway_px=sway_px,
                        bg_color=bg_color,
@@ -164,7 +175,7 @@ def draw_eye(draw, cx, cy, hw, hh,
 
     gc_outline = tuple(min(255, c + 40) for c in glow_color)
     draw.rounded_rectangle(
-        (cx - hw, cy - hh, cx + hw, cy + hh),
+        (real_cx - hw, cy - hh, real_cx + hw, cy + hh),
         radius=ER, outline=gc_outline, width=3
     )
 
@@ -209,21 +220,26 @@ def draw_mouth_angry(draw, morph=1.0):
 # ── Рендер кадру ──────────────────────────────────────────────────────────────
 def render(lid_frac=LID_FRAC_ANGRY, sway_px=0,
            mouth_morph=1.0, bg=(0, 0, 120),
-           snap_px=0):
+           eye_offset_px=0, gaze_x=0.0):
     img  = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(img)
 
+    # Базовий gaze_y — очі дивляться трохи вниз (злобно)
+    base_gaze_y = 0.20
+
     draw_eye(draw, BASE_EL_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
-             gaze_x=0.15, gaze_y=0.20,
-             snap_px=snap_px,
+             gaze_x=gaze_x,
+             gaze_y=base_gaze_y,
+             eye_offset_px=eye_offset_px,
              glow_color=C_GLOW_DIM, bg_color=bg,
              mirror=False)
 
     draw_eye(draw, BASE_ER_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
-             gaze_x=-0.15, gaze_y=0.20,
-             snap_px=snap_px,
+             gaze_x=-gaze_x,
+             gaze_y=base_gaze_y,
+             eye_offset_px=eye_offset_px,
              glow_color=C_GLOW_DIM, bg_color=bg,
              mirror=True)
 
@@ -236,71 +252,84 @@ def anim_angry():
 
     t = 0.0
 
-    # Машина станів ривку:
-    # IDLE      → чекаємо next_jerk_t
-    # JERK1     → snap_px = 10, чекаємо 0.5с
-    # JERK2     → snap_px = 20, чекаємо 0.5с
-    # HOLD      → snap_px = 20, чекаємо 0.5с
-    # RETURN    → snap_px = 0,  чекаємо 0.5с → IDLE
-    STATE_IDLE   = 0
-    STATE_JERK1  = 1
-    STATE_JERK2  = 2
-    STATE_HOLD   = 3
-    STATE_RETURN = 4
+    # ── Машина станів ────────────────────────────────────────────────────────
+    # IDLE     → чекаємо рандом 1.5–3.5с
+    # MOVE_IN  → 0.5с плавно: oko їде на 20px до центру + зіниця до краю
+    # HOLD     → 1.0с стоїть на місці
+    # MOVE_OUT → 0.5с плавно: повертається назад
+    # → IDLE
+    STATE_IDLE     = 0
+    STATE_MOVE_IN  = 1
+    STATE_HOLD     = 2
+    STATE_MOVE_OUT = 3
 
-    state      = STATE_IDLE
-    snap_px    = 0
-    next_t     = time.time() + random.uniform(1.5, 3.0)
+    MOVE_DURATION = 0.5   # секунд на рух
+    HOLD_DURATION = 1.0   # секунд затримки
+    EYE_SHIFT_PX  = 20    # пікселів зміщення всього ока
+    GAZE_TARGET   = 1.0   # зіниця до краю ока (1.0 = максимум)
+
+    state         = STATE_IDLE
+    state_start   = time.time()
+    next_idle_t   = time.time() + random.uniform(1.5, 3.0)
+
+    # Поточні значення (для lerp)
+    eye_offset_px = 0.0
+    gaze_x        = 0.0
 
     while True:
         now = time.time()
         t  += DT
 
-        # Пульсуючий червоний фон
+        # Пульсуючий синій фон (сердитий відтінок)
         bg_val = int(80 + 50 * (0.5 + 0.5 * math.sin(t * 2.5)))
         bg = (0, 0, bg_val)
 
         # Легке тремтіння повік
         sway_px = int(1.5 * math.sin(t * 1.8))
 
-        # Машина станів
+        # ── Машина станів ────────────────────────────────────────────────────
+        elapsed = now - state_start
+
         if state == STATE_IDLE:
-            snap_px = 0
-            if now >= next_t:
-                snap_px = 10
-                state   = STATE_JERK1
-                next_t  = now + 0.5
+            eye_offset_px = 0.0
+            gaze_x        = 0.0
+            if now >= next_idle_t:
+                state       = STATE_MOVE_IN
+                state_start = now
 
-        elif state == STATE_JERK1:
-            snap_px = 10
-            if now >= next_t:
-                snap_px = 20
-                state   = STATE_JERK2
-                next_t  = now + 0.5
-
-        elif state == STATE_JERK2:
-            snap_px = 20
-            if now >= next_t:
-                state  = STATE_HOLD
-                next_t = now + 0.5
+        elif state == STATE_MOVE_IN:
+            # ease_in_out від 0.0 до 1.0 за MOVE_DURATION секунд
+            progress      = ease_in_out(elapsed / MOVE_DURATION)
+            eye_offset_px = lerp(0.0, EYE_SHIFT_PX, progress)
+            gaze_x        = lerp(0.0, GAZE_TARGET,   progress)
+            if elapsed >= MOVE_DURATION:
+                eye_offset_px = EYE_SHIFT_PX
+                gaze_x        = GAZE_TARGET
+                state         = STATE_HOLD
+                state_start   = now
 
         elif state == STATE_HOLD:
-            snap_px = 20
-            if now >= next_t:
-                snap_px = 0
-                state   = STATE_RETURN
-                next_t  = now + 0.5
+            eye_offset_px = EYE_SHIFT_PX
+            gaze_x        = GAZE_TARGET
+            if elapsed >= HOLD_DURATION:
+                state       = STATE_MOVE_OUT
+                state_start = now
 
-        elif state == STATE_RETURN:
-            snap_px = 0
-            if now >= next_t:
-                state  = STATE_IDLE
-                next_t = now + random.uniform(1.5, 3.5)
+        elif state == STATE_MOVE_OUT:
+            progress      = ease_in_out(elapsed / MOVE_DURATION)
+            eye_offset_px = lerp(EYE_SHIFT_PX, 0.0, progress)
+            gaze_x        = lerp(GAZE_TARGET,   0.0, progress)
+            if elapsed >= MOVE_DURATION:
+                eye_offset_px = 0.0
+                gaze_x        = 0.0
+                state         = STATE_IDLE
+                next_idle_t   = now + random.uniform(1.5, 3.5)
 
         render(lid_frac=LID_FRAC_ANGRY,
                sway_px=sway_px,
                bg=bg,
-               snap_px=snap_px)
+               eye_offset_px=int(eye_offset_px),
+               gaze_x=gaze_x)
 
         time.sleep(DT)
 
