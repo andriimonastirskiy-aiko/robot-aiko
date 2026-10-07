@@ -14,6 +14,8 @@ device = ili9488(serial, width=480, height=320, rotate=0, bgr=True)
 device.backlight(True)
 
 W, H = 480, 320
+FPS  = 20
+DT   = 1.0 / FPS
 
 # ── Кольори ───────────────────────────────────────────────────────────────────
 C_GLOW     = (30,  30,  255)
@@ -297,13 +299,13 @@ def anim_angry():
     STATE_MOVE_OUT = 3
 
     MOVE_DURATION = 1.2
-    HOLD_DURATION = 1.0
+    HOLD_DURATION = 2.0   # затримка в центрі 2 секунди
     EYE_SHIFT_PX  = 14
     GAZE_TARGET   = 1.0
 
     state         = STATE_IDLE
     state_start   = time.time()
-    next_idle_t   = time.time() + random.uniform(1.5, 3.0)
+    next_idle_t   = time.time() + random.uniform(1.0, 1.5)
 
     eye_offset_px = 0.0
     gaze_x        = 0.0
@@ -358,7 +360,7 @@ def anim_angry():
                 eye_offset_px = 0.0
                 gaze_x        = 0.0
                 state         = STATE_IDLE
-                next_idle_t   = now + random.uniform(1.5, 3.5)
+                next_idle_t   = now + random.uniform(1.0, 1.5)
 
         render(now,
                lid_frac=LID_FRAC_ANGRY,
@@ -366,6 +368,8 @@ def anim_angry():
                bg=bg,
                eye_offset_px=int(eye_offset_px),
                gaze_x=gaze_x)
+
+        time.sleep(DT)
 
 # ── Старт ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
