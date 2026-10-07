@@ -41,7 +41,7 @@ MY = 272
 MW = 90
 
 LID_FRAC_SAD = 0.40    # 40% висоти ока
-LID_SKEW_PX  = 10      # скос: внутрішній край на 10px нижче зовнішнього
+LID_SKEW_PX  = 10      # скос: зовнішній край нижче внутрішнього
 
 # ── Утиліти ───────────────────────────────────────────────────────────────────
 def clamp(v, lo, hi): return max(lo, min(hi, v))
@@ -67,7 +67,7 @@ def draw_glow(draw, cx, cy, hw, hh, r, color):
             width=widths[i]
         )
 
-# ── Повіка SAD — верх заокруглений, низ зі скосом (mirror для правого ока) ───
+# ── Повіка SAD — суцільний polygon (верх по дузі ER, низ зі скосом) ──────────
 def draw_lid_sad(draw, cx, cy, hw, hh, lid_frac, sway_px,
                  bg_color, glow_color, mirror=False):
     if lid_frac <= 0.0:
@@ -78,33 +78,42 @@ def draw_lid_sad(draw, cx, cy, hw, hh, lid_frac, sway_px,
     bot_y  = cy - hh + lid_px
     rr     = ER
 
-    # 1. Заокруглений верх
-    draw.rounded_rectangle(
-        (cx - hw, top_y - 2, cx + hw, bot_y + rr),
-        radius=rr, fill=bg_color
-    )
+    # Верхня дуга — точки по заокругленим кутам (імітує rounded_rectangle зверху)
+    arc_pts = []
 
-    # 2. Скос:
-    #    Ліве oko (mirror=False): лівий (зовнішній) край вище, правий (внутрішній) нижче
-    #    Праве oko (mirror=True):  лівий (внутрішній) край нижче, правий (зовнішній) вище
+    # Лівий верхній кут: чверть кола 180°→270°
+    for deg in range(180, 271, 5):
+        rad = math.radians(deg)
+        x = (cx - hw + rr) + rr * math.cos(rad)
+        y = (top_y + rr)   + rr * math.sin(rad)
+        arc_pts.append((x, y))
+
+    # Правий верхній кут: чверть кола 270°→360°
+    for deg in range(270, 361, 5):
+        rad = math.radians(deg)
+        x = (cx + hw - rr) + rr * math.cos(rad)
+        y = (top_y + rr)   + rr * math.sin(rad)
+        arc_pts.append((x, y))
+
+    # Низ зі скосом — SAD: зовнішній край нижче, внутрішній вище
+    # Ліве oko (mirror=False): лівий (зовнішній) нижче, правий (внутрішній) вище
+    # Праве oko (mirror=True):  правий (зовнішній) нижче, лівий (внутрішній) вище
     if not mirror:
-        left_y  = int(bot_y + sway_px)               # зовнішній — вище
-        right_y = int(bot_y + LID_SKEW_PX + sway_px) # внутрішній — нижче
+        left_y  = int(bot_y + LID_SKEW_PX + sway_px)  # зовнішній — нижче
+        right_y = int(bot_y + sway_px)                 # внутрішній — вище
     else:
-        left_y  = int(bot_y + LID_SKEW_PX + sway_px) # внутрішній — нижче
-        right_y = int(bot_y + sway_px)               # зовнішній — вище
+        left_y  = int(bot_y + sway_px)                 # внутрішній — вище
+        right_y = int(bot_y + LID_SKEW_PX + sway_px)  # зовнішній — нижче
 
-    draw.polygon(
-        [
-            (cx - hw, bot_y + rr + 2),  # ліво-верх
-            (cx + hw, bot_y + rr + 2),  # право-верх
-            (cx + hw, right_y),          # право-низ
-            (cx - hw, left_y),           # ліво-низ
-        ],
-        fill=bg_color
-    )
+    # Суцільний polygon: верхня дуга + право-низ + ліво-низ
+    poly = arc_pts + [
+        (cx + hw, right_y),
+        (cx - hw, left_y),
+    ]
 
-    # 3. Лінія-контур скосу
+    draw.polygon(poly, fill=bg_color)
+
+    # Лінія-контур скосу
     draw.line(
         [(cx - hw + 4, left_y),
          (cx + hw - 4, right_y)],
@@ -204,13 +213,13 @@ def render(lid_frac=LID_FRAC_SAD, sway_px=0,
     img  = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(img)
 
-    # Ліве oko — mirror=False (правий край повіки нижче)
+    # Ліве oko — mirror=False: лівий (зовнішній) край нижче = сумний ╭────
     draw_eye(draw, BASE_EL_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
              gaze_y=gaze_y, bg_color=bg,
              mirror=False)
 
-    # Праве oko — mirror=True (лівий край повіки нижче)
+    # Праве oko — mirror=True: правий (зовнішній) край нижче = сумний ────╮
     draw_eye(draw, BASE_ER_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
              gaze_y=gaze_y, bg_color=bg,
