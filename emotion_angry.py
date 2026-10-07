@@ -18,9 +18,9 @@ FPS  = 30
 DT   = 1.0 / FPS
 
 # ── Кольори ───────────────────────────────────────────────────────────────────
-C_BG       = (120, 0,   0  )   # яскраво-червоний фон
-C_GLOW     = (255, 30,  30 )   # червоний glow (яскравий)
-C_GLOW_DIM = (160, 20,  20 )   # червоний glow (dim)
+C_BG       = (0,   0,   120)   # яскраво-червоний фон (BGR)
+C_GLOW     = (30,  30,  255)   # червоний glow яскравий (BGR)
+C_GLOW_DIM = (20,  20,  160)   # червоний glow dim (BGR)
 C_SCLERA   = (255, 255, 255)
 C_IRIS     = (255, 140, 30 )
 C_PUPIL    = (0,   0,   0  )
@@ -195,8 +195,8 @@ def draw_mouth_angry(draw, morph=1.0):
     x1 = MX + m_w
     y1 = MY + m_h // 2
 
-    # Тіло рота — темно-червоний (порожнина)
-    mouth_fill = (60, 0, 0)
+    # Тіло рота — темно-червоний (порожнина) (BGR)
+    mouth_fill = (0, 0, 60)
     draw.rounded_rectangle((x0, y0, x1, y1),
                             radius=m_r,
                             fill=mouth_fill,
@@ -256,7 +256,7 @@ def _blink(sway_px=0):
         time.sleep(0.013)
     render(lid_frac=1.0, sway_px=sway_px)
     time.sleep(0.05)
-    for i in range(steps):
+    for i in range(steps):\
         t = ease_inout(1.0 - i / steps)
         render(lid_frac=clamp(LID_FRAC_ANGRY + t * (1.0 - LID_FRAC_ANGRY), 0.0, 1.0),
                sway_px=sway_px)
