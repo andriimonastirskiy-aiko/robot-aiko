@@ -23,7 +23,7 @@ C_IRIS     = (255, 140, 30 )
 C_PUPIL    = (0,   0,   0  )
 C_SHINE    = (255, 255, 255)
 C_TOOTH    = (240, 240, 240)
-C_EXCLAIM  = (255, 220, 0  )   # жовтий
+C_EXCLAIM  = (0, 220, 255)     # жовтий (BGR swap для ILI9488)
 
 # ── Геометрія ─────────────────────────────────────────────────────────────────
 BASE_EL_X = 118
@@ -219,7 +219,6 @@ def draw_mouth_angry(draw, morph=1.0):
                                 fill=C_TOOTH)
 
 # ── Знаки оклику ──────────────────────────────────────────────────────────────
-# Кожен знак: {'x': int, 'y': int, 'born': float}
 _exclaims = []
 _next_exclaim_t = 0.0
 
@@ -235,12 +234,10 @@ def update_exclaims(now):
     # Час для нового?
     if now >= _next_exclaim_t:
         count = random.randint(2, 3)
-        # Рандомні X позиції у верхній зоні (y: 10–60)
         used_x = []
         for _ in range(count):
             for attempt in range(20):
                 nx = random.randint(30, W - 30)
-                # Не накладаємо знаки один на одного
                 if all(abs(nx - ux) > 50 for ux in used_x):
                     used_x.append(nx)
                     _exclaims.append({
@@ -299,9 +296,9 @@ def anim_angry():
     STATE_HOLD     = 2
     STATE_MOVE_OUT = 3
 
-    MOVE_DURATION = 0.5
+    MOVE_DURATION = 1.2
     HOLD_DURATION = 1.0
-    EYE_SHIFT_PX  = 20
+    EYE_SHIFT_PX  = 14
     GAZE_TARGET   = 1.0
 
     state         = STATE_IDLE
@@ -315,7 +312,7 @@ def anim_angry():
 
     while True:
         now   = time.time()
-        delta = now - last_frame   # реальний час між кадрами
+        delta = now - last_frame
         last_frame = now
         t += delta
 
@@ -337,7 +334,6 @@ def anim_angry():
                 state_start = now
 
         elif state == STATE_MOVE_IN:
-            # Кубічна крива — дуже плавно
             progress      = cubic_ease_in_out(elapsed / MOVE_DURATION)
             eye_offset_px = lerp(0.0, EYE_SHIFT_PX, progress)
             gaze_x        = lerp(0.0, GAZE_TARGET,   progress)
