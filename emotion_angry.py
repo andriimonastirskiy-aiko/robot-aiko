@@ -18,17 +18,17 @@ FPS  = 15
 DT   = 1.0 / FPS
 
 # ── Статичний фон (малюється ОДИН РАЗ) ───────────────────────────────────────
-BG_COLOR = (120, 20, 10)
+BG_COLOR = (10, 20, 120)   # BGR: виглядає як темно-червоний
 BG_IMAGE = Image.new("RGB", (W, H), BG_COLOR)
 
-# ── Кольори ───────────────────────────────────────────────────────────────────
-C_GLOW_DIM = (160, 20,  20)
+# ── Кольори (BGR-формат для ILI9488 bgr=True) ────────────────────────────────
+C_GLOW_DIM = (20,  20, 160)   # BGR → виглядає червоним
 C_SCLERA   = (255, 255, 255)
-C_IRIS     = (255, 140, 30 )
+C_IRIS     = (30,  140, 255)  # BGR → виглядає як жовтогарячий
 C_PUPIL    = (0,   0,   0  )
 C_SHINE    = (255, 255, 255)
 C_TOOTH    = (240, 240, 240)
-C_EXCLAIM  = (255, 60,  0  )
+C_EXCLAIM  = (0,   60,  255)  # BGR → виглядає як яскраво-червоний
 
 # ── Геометрія ─────────────────────────────────────────────────────────────────
 BASE_EL_X = 118
@@ -148,7 +148,7 @@ def draw_eye(draw, cx, cy, hw, hh,
     sh2_r = max(2, sh_r // 2)
     draw.ellipse((sh_x + sh_r, sh_y - sh2_r,
                   sh_x + sh_r + sh2_r * 2, sh_y + sh2_r),
-                 fill=(200, 230, 255))
+                 fill=(200, 230, 255))  # BGR → теплий відтінок
 
     if lid_frac > 0.01:
         draw_lid_angry(draw, real_cx, cy, hw, hh,
@@ -178,7 +178,7 @@ def draw_mouth_angry(draw, morph=1.0):
 
     draw.rounded_rectangle((x0, y0, x1, y1),
                             radius=m_r,
-                            fill=(60, 0, 0),
+                            fill=(0, 0, 60),        # BGR → темно-червоний рот
                             outline=C_GLOW_DIM,
                             width=3)
 
