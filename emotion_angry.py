@@ -22,13 +22,13 @@ BG_COLOR = (120, 20, 10)
 BG_IMAGE = Image.new("RGB", (W, H), BG_COLOR)
 
 # ── Кольори ───────────────────────────────────────────────────────────────────
-C_GLOW_DIM = (20,  20,  160)
+C_GLOW_DIM = (160, 20,  20)
 C_SCLERA   = (255, 255, 255)
 C_IRIS     = (255, 140, 30 )
 C_PUPIL    = (0,   0,   0  )
 C_SHINE    = (255, 255, 255)
 C_TOOTH    = (240, 240, 240)
-C_EXCLAIM  = (0, 220, 255)
+C_EXCLAIM  = (255, 60,  0  )
 
 # ── Геометрія ─────────────────────────────────────────────────────────────────
 BASE_EL_X = 118
@@ -178,7 +178,7 @@ def draw_mouth_angry(draw, morph=1.0):
 
     draw.rounded_rectangle((x0, y0, x1, y1),
                             radius=m_r,
-                            fill=(0, 0, 60),
+                            fill=(60, 0, 0),
                             outline=C_GLOW_DIM,
                             width=3)
 
@@ -236,7 +236,6 @@ def render(now, lid_frac=LID_FRAC_ANGRY,
            mouth_morph=1.0,
            eye_offset_px=0, gaze_x=0.0):
 
-    # Копіюємо статичний фон — НЕ створюємо новий Image кожен кадр
     img  = BG_IMAGE.copy()
     draw = ImageDraw.Draw(img)
 
@@ -290,7 +289,6 @@ def anim_angry():
 
         elapsed = now - state_start
 
-        # ── Машина станів ────────────────────────────────────────────────────
         if state == STATE_IDLE:
             eye_offset_px = 0.0
             gaze_x        = 0.0
@@ -330,7 +328,6 @@ def anim_angry():
                eye_offset_px=int(eye_offset_px),
                gaze_x=gaze_x)
 
-        # Адаптивний sleep — чекаємо лише залишок часу кадру
         frame_time = time.time() - frame_start
         sleep_time = max(0.0, DT - frame_time)
         time.sleep(sleep_time)
