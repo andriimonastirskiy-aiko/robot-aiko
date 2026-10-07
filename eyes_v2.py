@@ -1,18 +1,21 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║           AIKO eyes_v2.py — процедурна анімація очей                       ║
+║           AIKO eyes_v2.py — процедурна анімація очей  v3.0                 ║
 ║           Стиль: neon cyan glow, чорний фон, мультяшний                    ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
-║  РЕФЕРЕНС ДИЗАЙНУ (з PNG фото смайликів):                                  ║
-║  Детальний опис → EYES_REFERENCE.md                                        ║
+║  ЗМІНИ v3.0:                                                                ║
+║  - Фікс чорних кутів glow → RGBA alpha_composite                           ║
+║  - Очі -20%: EW=60, EH=68, ER=26                                           ║
+║  - Єдина базова позиція для всіх емоцій (BASE_EY=148)                      ║
+║  - Рот для ВСІХ емоцій, width=10, MW=90                                    ║
+║  - angry: оскал із зубками                                                  ║
+║  - thinking: smirk що зміщується + язик                                    ║
+║  - surprised: відкритий овал                                                ║
+║  - Рот синхронний з очима в transition_to                                  ║
+║  - Випадковий порядок емоцій (не ланцюжок)                                 ║
+║  - Перехід між емоціями: 0.5 сек                                            ║
 ║                                                                              ║
-║  ФОРМА ОКА: rounded rectangle (НЕ еліпс!), radius~32px                     ║
-║  GLOW: cyan (0,220,255) по контуру, angry = помаранч (255,80,0)            ║
-║                                                                              ║
-║  ⚠️  bgr=True на ILI9488: RGB в PIL = BGR на екрані!                       ║
-║      Червоний фон → PIL (0,0,55), cyan glow → PIL (255,220,0) ← ні,       ║
-║      cyan = (0,220,255) бо G і B не міняються місцями попарно,             ║
-║      міняється лише канал R↔B: (R,G,B)→(B,G,R) на екрані.                ║
+║  ⚠️  bgr=True на ILI9488: PIL (R,G,B) → екран (B,G,R)                     ║
 ║      Тобто PIL (0,0,55) → екран (55,0,0) = темно-червоний ✓               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
@@ -35,39 +38,38 @@ DT   = 1.0 / FPS
 
 # ── Кольори (PIL RGB, але дисплей bgr=True → R↔B міняються) ─────────────────
 # Правило: якщо хочеш на екрані (R,G,B) → пиши в PIL (B,G,R)
-C_BG           = (0,   0,   0)       # чорний — однаковий
-C_CYAN         = (255, 220, 0)       # PIL→екран: cyan (0,220,255) ✓
-C_CYAN_DIM     = (180, 140, 0)       # тьмяний cyan для sad
-C_GLOW_ANGRY   = (0,   80,  255)     # PIL→екран: помаранчевий (255,80,0) ✓
-C_WHITE        = (255, 255, 255)     # білий — однаковий
-C_SCLERA       = (255, 255, 255)     # білок нормальний
-C_SCLERA_ANGRY = (200, 200, 255)     # PIL→екран: рожевий (255,200,200) ✓
-C_IRIS         = (255, 140, 30)      # PIL→екран: синя райдужка (30,140,255) ✓
-C_PUPIL        = (0,   0,   0)       # чорна зіниця
-C_SHINE        = (255, 255, 255)     # відблиск білий
-C_TEAR         = (255, 200, 0)       # PIL→екран: cyan сльоза (0,200,255) ✓
-C_BG_ANGRY     = (55,  0,   0)       # PIL→екран: темно-червоний (0,0,55)→(55,0,0) ✓
+C_BG           = (0,   0,   0  )   # чорний — однаковий
+C_CYAN         = (255, 220, 0  )   # PIL→екран: cyan (0,220,255) ✓
+C_CYAN_DIM     = (130, 120, 0  )   # тьмяний cyan для sad
+C_GLOW_ANGRY   = (0,   80,  255)   # PIL→екран: помаранчевий (255,80,0) ✓
+C_WHITE        = (255, 255, 255)   # білий — однаковий
+C_SCLERA       = (255, 255, 255)   # білок нормальний
+C_SCLERA_ANGRY = (200, 200, 255)   # PIL→екран: рожевий (255,200,200) ✓
+C_IRIS         = (255, 140, 30 )   # PIL→екран: синя райдужка (30,140,255) ✓
+C_PUPIL        = (0,   0,   0  )   # чорна зіниця
+C_SHINE        = (255, 255, 255)   # відблиск білий
+C_TEAR         = (255, 200, 0  )   # PIL→екран: cyan сльоза (0,200,255) ✓
+C_BG_ANGRY     = (0,   0,   55 )   # PIL→екран: темно-червоний ✓
+C_TONGUE       = (180, 60,  255)   # PIL→екран: рожевий язик (255,60,180) ✓
+C_TEETH        = (255, 255, 255)   # зуби білі
 
 # ── Геометрія очей ────────────────────────────────────────────────────────────
-# Центри очей — розсунуті далі, щоб не перекривались
-EL_X, ER_X = 118, 362   # X лівого і правого (відстань 244px)
-EY          = 148        # Y центр
+# Базова позиція — ЄДИНА для всіх емоцій
+BASE_EL_X = 118   # X лівого ока
+BASE_ER_X = 362   # X правого ока
+BASE_EY   = 148   # Y центр очей
 
-# Розмір rounded rect ока (МЕНШИЙ ніж раніше)
-EW = 75    # напів-ширина  (було 100)
-EH = 85    # напів-висота  (було 110)
-ER = 32    # радіус заокруглення (було 44)
-
-# Перевірка: ліве oko займає 118-75=43 до 118+75=193
-#            праве oko займає 362-75=287 до 362+75=437
-#            між очима вільно: 287-193 = 94px ✓
+# Розмір ока -20% від попередньої версії
+EW = 60    # напів-ширина  (було 75)
+EH = 68    # напів-висота  (було 85)
+ER = 26    # радіус заокруглення (було 32)
 
 # Рот
-MX = W // 2  # 240
-MY = 272
-MW = 60
+MX = W // 2   # 240 — центр рота по X
+MY = 272      # Y рота
+MW = 90       # ширина рота (було 60)
 
-# Брови (surprised) — висота над оком
+# Брови (surprised)
 BROW_H = 18
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -78,40 +80,45 @@ def lerp(a, b, t):
     return a + (b - a) * t
 
 def ease_inout(t):
+    t = max(0.0, min(1.0, t))
     return t * t * (3 - 2 * t)
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
-def swap_rb(color):
-    """Міняє R↔B у кольорі (для bgr=True дисплея)"""
-    return (color[2], color[1], color[0])
+def lerp_color(c1, c2, t):
+    return tuple(int(lerp(c1[i], c2[i], t)) for i in range(3))
 
-# ── Малювання rounded rectangle ───────────────────────────────────────────────
-def draw_rrect(draw, cx, cy, hw, hh, r, fill=None, outline=None, width=3):
-    x0, y0 = cx - hw, cy - hh
-    x1, y1 = cx + hw, cy + hh
-    draw.rounded_rectangle((x0, y0, x1, y1), radius=r,
-                            fill=fill, outline=outline, width=width)
+# ─────────────────────────────────────────────────────────────────────────────
+# GLOW — через RGBA шар (фікс чорних кутів!)
+# ─────────────────────────────────────────────────────────────────────────────
+def draw_glow_rgba(base_img, cx, cy, hw, hh, r, color, layers=5):
+    """
+    Малює glow через окремий RGBA шар і накладає через alpha_composite.
+    Це усуває чорний фон між шарами rounded_rectangle.
+    """
+    glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow_layer)
 
-def draw_glow(draw, cx, cy, hw, hh, r, color, layers=4):
-    """Neon glow навколо rounded rect"""
     for i in range(layers, 0, -1):
-        expand = i * 4
-        dim    = layers - i + 1
-        gc = tuple(max(0, c // dim) for c in color)
-        draw.rounded_rectangle(
+        expand  = i * 5
+        alpha   = int(200 * (1 - i / (layers + 1)))
+        gc      = (color[0], color[1], color[2], alpha)
+        gd.rounded_rectangle(
             (cx - hw - expand, cy - hh - expand,
              cx + hw + expand, cy + hh + expand),
             radius=r + expand // 2,
             outline=gc,
-            width=2
+            width=3
         )
+
+    # Накладаємо на base_img (він має бути RGBA)
+    base_img.alpha_composite(glow_layer)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # МАЛЮВАННЯ ОДНОГО ОКА
 # ─────────────────────────────────────────────────────────────────────────────
-def draw_eye(draw, cx, cy, hw, hh,
+def draw_eye(base_img, draw, cx, cy, hw, hh,
              lid_top=0.0,
              lid_angle=0.0,
              gaze_x=0.0,
@@ -128,18 +135,23 @@ def draw_eye(draw, cx, cy, hw, hh,
 
     r = ER
 
-    # 1. GLOW
-    draw_glow(draw, cx, cy, hw, hh, r, glow_color)
+    # 1. GLOW через RGBA шар (без чорних кутів!)
+    draw_glow_rgba(base_img, cx, cy, hw, hh, r, glow_color)
 
-    # 2. БІЛОК
-    draw_rrect(draw, cx, cy, hw, hh, r, fill=sclera_color)
+    # Оновлюємо draw після зміни base_img
+    draw = ImageDraw.Draw(base_img)
+
+    # 2. БІЛОК — заповнений rounded rect
+    x0, y0 = cx - hw, cy - hh
+    x1, y1 = cx + hw, cy + hh
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=r, fill=sclera_color)
 
     # 3. РАЙДУЖКА + ЗІНИЦЯ
-    if not blink_line:
+    if not blink_line and lid_top < 0.95:
         iris_hw = int(hw * 0.50 * iris_scale)
         iris_hh = int(hh * 0.50 * iris_scale)
-        max_gx  = hw - iris_hw - 5
-        max_gy  = hh - iris_hh - 5
+        max_gx  = max(1, hw - iris_hw - 4)
+        max_gy  = max(1, hh - iris_hh - 4)
         off_x   = int(clamp(gaze_x * max_gx, -max_gx, max_gx))
         off_y   = int(clamp(gaze_y * max_gy, -max_gy, max_gy))
         icx, icy = cx + off_x, cy + off_y
@@ -164,13 +176,13 @@ def draw_eye(draw, cx, cy, hw, hh,
         sh_r = max(3, int(iris_hw * 0.17))
         draw.ellipse((sh_x - sh_r, sh_y - sh_r,
                       sh_x + sh_r, sh_y + sh_r), fill=C_SHINE)
-        # Маленький другий відблиск
+        # Другий маленький відблиск
         sh2_r = max(2, sh_r // 2)
         draw.ellipse((sh_x + sh_r, sh_y - sh2_r,
                       sh_x + sh_r + sh2_r * 2, sh_y + sh2_r),
                      fill=(200, 230, 255))
 
-    # 4. ПОВІКА
+    # 4. ПОВІКА — малюємо поверх, тим самим кольором що і фон
     if lid_top > 0.01 or abs(lid_angle) > 0.5:
         lid_px = int(hh * 2 * lid_top)
 
@@ -188,9 +200,9 @@ def draw_eye(draw, cx, cy, hw, hh,
                           fill=glow_color, width=4)
         else:
             # Кутова повіка (angry) — трапеція
-            angle_rad  = math.radians(abs(lid_angle))
-            half_tilt  = int(hw * math.tan(angle_rad))
-            top_y      = cy - hh - 2
+            angle_rad   = math.radians(abs(lid_angle))
+            half_tilt   = int(hw * math.tan(angle_rad))
+            top_y       = cy - hh - 2
             left_bot_y  = cy - hh + lid_px - half_tilt
             right_bot_y = cy - hh + lid_px + half_tilt
             draw.polygon(
@@ -201,73 +213,174 @@ def draw_eye(draw, cx, cy, hw, hh,
                 fill=bg_color
             )
 
-    # 5. КОНТУР поверх всього
-    gc_outline = tuple(min(255, c + 25) for c in glow_color)
-    draw_rrect(draw, cx, cy, hw, hh, r, outline=gc_outline, width=3)
+    # 5. КОНТУР — поверх всього, щоб glow і повіка не псували обводку
+    gc_outline = tuple(min(255, c + 30) for c in glow_color)
+    draw.rounded_rectangle(
+        (cx - hw, cy - hh, cx + hw, cy + hh),
+        radius=r,
+        outline=gc_outline,
+        width=3
+    )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# РОТ
+# РОТ — всі стилі, width=10
 # ─────────────────────────────────────────────────────────────────────────────
-def draw_mouth(draw, style="none", open_factor=0.0, glow_color=None):
+def draw_mouth(draw, style="none", open_factor=0.0,
+               morph=1.0, offset_x=0, glow_color=None):
+    """
+    style: none | happy | sad | surprised | angry | thinking
+    morph: 0.0→1.0 — плавна поява форми (для transition)
+    offset_x: зміщення по X (для thinking smirk)
+    """
     if style == "none":
         return
     if glow_color is None:
         glow_color = C_CYAN
 
-    if style == "open" or open_factor > 0.05:
-        ow = int(MW * 0.7)
-        oh = int(22 + 24 * open_factor)
-        gc = tuple(max(0, c // 4) for c in glow_color)
-        draw.ellipse((MX - ow - 3, MY - oh - 3,
-                      MX + ow + 3, MY + oh + 3), fill=gc)
-        draw.ellipse((MX - ow, MY - oh, MX + ow, MY + oh),
-                     fill=(10, 10, 10))
-        draw.ellipse((MX - ow, MY - oh, MX + ow, MY + oh),
-                     outline=C_WHITE, width=3)
+    mx = MX + int(offset_x)
+    alpha = clamp(morph, 0.0, 1.0)
 
-    elif style == "happy":
-        arc_h = 20
+    # ── HAPPY — усмішка-дуга ──────────────────────────────────────────────────
+    if style == "happy":
+        arc_h = int(26 * alpha)
+        arc_w = int(MW * alpha)
+        if arc_w < 4 or arc_h < 4:
+            return
         # Glow
-        draw.arc((MX - MW - 4, MY - arc_h - 4,
-                  MX + MW + 4, MY + arc_h + 4),
-                 start=10, end=170, fill=(80, 80, 80), width=8)
-        draw.arc((MX - MW, MY - arc_h, MX + MW, MY + arc_h),
-                 start=10, end=170, fill=C_WHITE, width=5)
+        gc = tuple(max(0, c // 5) for c in glow_color)
+        draw.arc((mx - arc_w - 5, MY - arc_h - 5,
+                  mx + arc_w + 5, MY + arc_h + 5),
+                 start=10, end=170, fill=gc, width=14)
+        # Основна лінія
+        draw.arc((mx - arc_w, MY - arc_h,
+                  mx + arc_w, MY + arc_h),
+                 start=10, end=170, fill=C_WHITE, width=10)
 
+    # ── SAD — перевернута дуга ────────────────────────────────────────────────
     elif style == "sad":
-        arc_h = 16
-        gc = tuple(max(0, c // 4) for c in C_CYAN)
-        draw.arc((MX - MW - 4, MY - arc_h - 4,
-                  MX + MW + 4, MY + arc_h + 4),
-                 start=190, end=350, fill=gc, width=8)
-        draw.arc((MX - MW, MY - arc_h, MX + MW, MY + arc_h),
-                 start=190, end=350, fill=C_CYAN, width=4)
+        arc_h = int(22 * alpha)
+        arc_w = int(MW * alpha)
+        if arc_w < 4 or arc_h < 4:
+            return
+        gc = tuple(max(0, c // 5) for c in C_CYAN_DIM)
+        draw.arc((mx - arc_w - 5, MY - arc_h - 5,
+                  mx + arc_w + 5, MY + arc_h + 5),
+                 start=190, end=350, fill=gc, width=14)
+        draw.arc((mx - arc_w, MY - arc_h,
+                  mx + arc_w, MY + arc_h),
+                 start=190, end=350, fill=C_CYAN_DIM, width=10)
+
+    # ── SURPRISED — відкритий овал ────────────────────────────────────────────
+    elif style == "surprised":
+        ow = int(MW * 0.50 * alpha)
+        oh = int(36 * alpha)
+        if ow < 4 or oh < 4:
+            return
+        # Glow
+        gc = tuple(max(0, c // 5) for c in glow_color)
+        draw.ellipse((mx - ow - 6, MY - oh - 6,
+                      mx + ow + 6, MY + oh + 6), fill=gc)
+        # Темний фон рота
+        draw.ellipse((mx - ow, MY - oh, mx + ow, MY + oh),
+                     fill=(15, 15, 15))
+        # Контур
+        draw.ellipse((mx - ow, MY - oh, mx + ow, MY + oh),
+                     outline=C_WHITE, width=10)
+
+    # ── ANGRY — оскал із зубками ─────────────────────────────────────────────
+    elif style == "angry":
+        ow = int(MW * 0.65 * alpha)
+        oh = int(22 * alpha)
+        if ow < 4 or oh < 4:
+            return
+        # Glow
+        gc = tuple(max(0, c // 5) for c in C_GLOW_ANGRY)
+        draw.ellipse((mx - ow - 6, MY - oh - 6,
+                      mx + ow + 6, MY + oh + 6), fill=gc)
+        # Темний фон рота
+        draw.ellipse((mx - ow, MY - oh, mx + ow, MY + oh),
+                     fill=(10, 10, 10))
+        # Контур рота
+        draw.ellipse((mx - ow, MY - oh, mx + ow, MY + oh),
+                     outline=C_GLOW_ANGRY, width=10)
+        # Зубки — вертикальні лінії у верхній половині
+        tooth_count = 5
+        tooth_w     = (ow * 2) // (tooth_count + 1)
+        for i in range(tooth_count):
+            tx = mx - ow + tooth_w * (i + 1)
+            # Малюємо тільки якщо tx в межах еліпса
+            if abs(tx - mx) < ow - 6:
+                draw.rectangle(
+                    (tx - 4, MY - oh + 4,
+                     tx + 4, MY + 4),
+                    fill=C_TEETH
+                )
+
+    # ── THINKING — асиметрична smirk + язик ──────────────────────────────────
+    elif style == "thinking":
+        arc_w  = int(MW * 0.60 * alpha)
+        # Рот зміщений вправо — управляється offset_x зовні
+        # Ліво-право кути різні (smirk)
+        # Малюємо як polybezier через points
+        pts_count = 20
+        pts = []
+        for i in range(pts_count + 1):
+            fx = i / pts_count  # 0..1
+            px = mx - arc_w + int(arc_w * 2 * fx)
+            # Ліва сторона нижче, права вище — асиметрія
+            left_drop  = int(18 * alpha)
+            right_rise = int(12 * alpha)
+            py = MY + int(lerp(left_drop, -right_rise, ease_inout(fx)))
+            pts.append((px, py))
+        if len(pts) >= 2:
+            # Glow
+            gc = tuple(max(0, c // 5) for c in glow_color)
+            draw.line(pts, fill=gc, width=18)
+            draw.line(pts, fill=C_WHITE, width=10)
+
+        # Язик — маленький рожевий на правому кутику рота
+        if alpha > 0.5:
+            tongue_alpha = (alpha - 0.5) * 2.0
+            tx = mx + arc_w - 8
+            ty = MY - int(10 * tongue_alpha)
+            tr = int(10 * tongue_alpha)
+            if tr > 2:
+                draw.ellipse((tx - tr, ty - tr // 2,
+                              tx + tr, ty + tr),
+                             fill=C_TONGUE)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # БРОВИ (surprised)
 # ─────────────────────────────────────────────────────────────────────────────
 def draw_brows_surprised(draw, lift=1.0):
-    for cx in [EL_X, ER_X]:
-        bw = 48
-        bh = int(16 * lift)
-        by = EY - EH - BROW_H - int(18 * lift)
+    for cx in [BASE_EL_X, BASE_ER_X]:
+        bw = int(44 * lift)
+        bh = int(14 * lift)
+        by = BASE_EY - EH - BROW_H - int(16 * lift)
+        if bw < 4 or bh < 4:
+            continue
         draw.arc((cx - bw - 3, by - bh - 3,
                   cx + bw + 3, by + bh + 3),
-                 start=200, end=340, fill=(80, 80, 80), width=7)
+                 start=200, end=340, fill=(80, 80, 80), width=8)
         draw.arc((cx - bw, by - bh, cx + bw, by + bh),
-                 start=200, end=340, fill=C_WHITE, width=4)
+                 start=200, end=340, fill=C_WHITE, width=5)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # СЛЬОЗИ
 # ─────────────────────────────────────────────────────────────────────────────
 def draw_tears(draw, elapsed):
-    for base_x, offset in [(EL_X - 14, 0.0), (ER_X + 14, 0.55)]:
-        drop_y = EY + EH + int((elapsed * 55 + offset * 90) % 110)
+    for base_x, offset in [(BASE_EL_X - 14, 0.0),
+                            (BASE_ER_X + 14, 0.55)]:
+        drop_y = BASE_EY + EH + int((elapsed * 55 + offset * 90) % 110)
         draw.ellipse((base_x - 7, drop_y - 13,
                       base_x + 7, drop_y + 7), fill=C_TEAR)
         draw.ellipse((base_x - 3, drop_y - 9,
                       base_x + 1, drop_y - 4),
                      fill=(200, 240, 255))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕНДЕР КАДРУ
@@ -277,22 +390,26 @@ def render(
     l_iris_scale=1.0, l_blink_line=False,
     r_lid=0.0, r_lid_angle=0.0, r_gaze_x=0.0, r_gaze_y=0.0,
     r_iris_scale=1.0, r_blink_line=False,
-    hw=EW, hh=EH,
+    hw=None, hh=None,
     glow_color=None, sclera_color=None,
-    mouth="none", mouth_open=0.0,
+    mouth="none", mouth_open=0.0, mouth_morph=1.0, mouth_offset_x=0,
     brows=False, brow_lift=1.0,
-    bg=(0, 0, 0),
+    bg=None,
     tears=False, tears_elapsed=0.0,
     extra_fn=None
 ):
     if glow_color   is None: glow_color   = C_CYAN
     if sclera_color is None: sclera_color = C_SCLERA
+    if bg           is None: bg           = C_BG
+    if hw           is None: hw           = EW
+    if hh           is None: hh           = EH
 
-    img  = Image.new("RGB", (W, H), bg)
+    # Працюємо в RGBA для підтримки alpha_composite
+    img  = Image.new("RGBA", (W, H), bg + (255,))
     draw = ImageDraw.Draw(img)
 
-    # Ліве oko (кут повіки — дзеркальний)
-    draw_eye(draw, EL_X, EY, hw, hh,
+    # Ліве oko
+    draw_eye(img, draw, BASE_EL_X, BASE_EY, hw, hh,
              lid_top=l_lid, lid_angle=-l_lid_angle,
              gaze_x=l_gaze_x, gaze_y=l_gaze_y,
              iris_scale=l_iris_scale,
@@ -302,7 +419,7 @@ def render(
              bg_color=bg)
 
     # Праве oko
-    draw_eye(draw, ER_X, EY, hw, hh,
+    draw_eye(img, draw, BASE_ER_X, BASE_EY, hw, hh,
              lid_top=r_lid, lid_angle=r_lid_angle,
              gaze_x=r_gaze_x, gaze_y=r_gaze_y,
              iris_scale=r_iris_scale,
@@ -311,10 +428,16 @@ def render(
              blink_line=r_blink_line,
              bg_color=bg)
 
+    # Оновлюємо draw після draw_eye (бо він міг перестворити)
+    draw = ImageDraw.Draw(img)
+
     if brows:
         draw_brows_surprised(draw, lift=brow_lift)
 
-    draw_mouth(draw, style=mouth, open_factor=mouth_open,
+    draw_mouth(draw, style=mouth,
+               open_factor=mouth_open,
+               morph=mouth_morph,
+               offset_x=mouth_offset_x,
                glow_color=glow_color)
 
     if tears:
@@ -323,30 +446,193 @@ def render(
     if extra_fn:
         extra_fn(draw)
 
-    device.display(img)
+    # Конвертуємо RGBA → RGB для відображення
+    rgb_img = img.convert("RGB")
+    device.display(rgb_img)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# АНІМАЦІЇ
+# МОРГАННЯ (спільне для happy/sad/talking)
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _blink(mouth="none", glow_color=None, bg=(0,0,0)):
+def _blink(mouth="none", glow_color=None, bg=None,
+           r_lid_fixed=None, extra_fn=None):
+    """Одне моргання. r_lid_fixed — якщо праве oko не має моргати (thinking)"""
     if glow_color is None: glow_color = C_CYAN
+    if bg         is None: bg         = C_BG
+
     steps = 7
     for i in range(steps):
-        t = ease_inout(i / steps)
-        render(l_lid=t, r_lid=t, mouth=mouth, glow_color=glow_color, bg=bg,
-               l_blink_line=(t > 0.8), r_blink_line=(t > 0.8))
-        time.sleep(0.013)
-    render(l_lid=1.0, r_lid=1.0, mouth=mouth, glow_color=glow_color, bg=bg,
-           l_blink_line=True, r_blink_line=True)
-    time.sleep(0.05)
-    for i in range(steps):
-        t = ease_inout(1.0 - i / steps)
-        render(l_lid=t, r_lid=t, mouth=mouth, glow_color=glow_color, bg=bg,
-               l_blink_line=(t > 0.8), r_blink_line=(t > 0.8))
+        t     = ease_inout(i / steps)
+        r_lid = r_lid_fixed if r_lid_fixed is not None else t
+        render(l_lid=t, r_lid=r_lid,
+               mouth=mouth, glow_color=glow_color, bg=bg,
+               l_blink_line=(t > 0.8),
+               r_blink_line=(r_lid > 0.8) if r_lid_fixed is None else False,
+               extra_fn=extra_fn)
         time.sleep(0.013)
 
-# ── 😊 HAPPY ─────────────────────────────────────────────────────────────────
+    r_lid = r_lid_fixed if r_lid_fixed is not None else 1.0
+    render(l_lid=1.0, r_lid=r_lid,
+           mouth=mouth, glow_color=glow_color, bg=bg,
+           l_blink_line=True,
+           r_blink_line=False if r_lid_fixed is not None else True,
+           extra_fn=extra_fn)
+    time.sleep(0.05)
+
+    for i in range(steps):
+        t     = ease_inout(1.0 - i / steps)
+        r_lid = r_lid_fixed if r_lid_fixed is not None else t
+        render(l_lid=t, r_lid=r_lid,
+               mouth=mouth, glow_color=glow_color, bg=bg,
+               l_blink_line=(t > 0.8),
+               r_blink_line=False if r_lid_fixed is not None else (t > 0.8),
+               extra_fn=extra_fn)
+        time.sleep(0.013)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ПЛАВНИЙ ПЕРЕХІД МІЖ СТАНАМИ (очі + рот синхронно, 0.5 сек)
+# ─────────────────────────────────────────────────────────────────────────────
+# Числові ключі що інтерполюються
+_NUMERIC_KEYS = {
+    "l_lid", "r_lid", "l_lid_angle", "r_lid_angle",
+    "l_gaze_x", "l_gaze_y", "r_gaze_x", "r_gaze_y",
+    "l_iris_scale", "r_iris_scale",
+    "hw", "hh",
+    "mouth_morph", "mouth_offset_x",
+    "brow_lift",
+}
+# Кольорові ключі (tuple of 3)
+_COLOR_KEYS = {"glow_color", "sclera_color", "bg"}
+
+
+def transition_to(from_state, to_state, duration=0.5):
+    """
+    Плавний перехід між двома словниками стану.
+    Рот і очі синхронні: mouth_morph 1→0→1 між стилями.
+    """
+    steps = max(4, int(duration / DT))
+
+    from_mouth = from_state.get("mouth", "none")
+    to_mouth   = to_state.get("mouth",   "none")
+    same_mouth = (from_mouth == to_mouth)
+
+    for i in range(steps + 1):
+        t = ease_inout(i / steps)
+        frame = {}
+
+        for key in set(list(from_state.keys()) + list(to_state.keys())):
+            fv = from_state.get(key)
+            tv = to_state.get(key)
+
+            if fv is None and tv is None:
+                continue
+            if fv is None:
+                fv = tv
+            if tv is None:
+                tv = fv
+
+            if key in _NUMERIC_KEYS:
+                frame[key] = lerp(fv, tv, t)
+            elif key in _COLOR_KEYS:
+                frame[key] = lerp_color(fv, tv, t)
+            else:
+                # Рядки / bool — перемикаємо в середині
+                frame[key] = tv if t >= 0.5 else fv
+
+        # Mouth morph: якщо стиль різний — спочатку зникає, потім з'являється
+        if not same_mouth:
+            if t < 0.5:
+                frame["mouth"]       = from_mouth
+                frame["mouth_morph"] = 1.0 - ease_inout(t * 2)
+            else:
+                frame["mouth"]       = to_mouth
+                frame["mouth_morph"] = ease_inout((t - 0.5) * 2)
+        else:
+            frame["mouth"]       = from_mouth
+            frame["mouth_morph"] = 1.0
+
+        render(**frame)
+        time.sleep(DT)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# СТАНИ (базові словники для transition_to)
+# ─────────────────────────────────────────────────────────────────────────────
+STATE_HAPPY = dict(
+    l_lid=0.0, r_lid=0.0,
+    l_gaze_x=0.0, l_gaze_y=0.0,
+    r_gaze_x=0.0, r_gaze_y=0.0,
+    l_iris_scale=1.0, r_iris_scale=1.0,
+    hw=EW, hh=EH,
+    mouth="happy", mouth_morph=1.0, mouth_offset_x=0,
+    brows=False, brow_lift=0.0,
+    glow_color=C_CYAN, sclera_color=C_SCLERA, bg=C_BG
+)
+
+STATE_SURPRISED = dict(
+    l_lid=0.0, r_lid=0.0,
+    l_gaze_x=0.0, l_gaze_y=0.0,
+    r_gaze_x=0.0, r_gaze_y=0.0,
+    l_iris_scale=0.70, r_iris_scale=0.70,
+    hw=EW, hh=EH,
+    mouth="surprised", mouth_morph=1.0, mouth_offset_x=0,
+    brows=True, brow_lift=1.0,
+    glow_color=C_CYAN, sclera_color=C_SCLERA, bg=C_BG
+)
+
+STATE_SAD = dict(
+    l_lid=0.42, r_lid=0.42,
+    l_gaze_x=0.0, l_gaze_y=0.32,
+    r_gaze_x=0.0, r_gaze_y=0.32,
+    l_iris_scale=1.0, r_iris_scale=1.0,
+    hw=EW, hh=EH,
+    mouth="sad", mouth_morph=1.0, mouth_offset_x=0,
+    brows=False, brow_lift=0.0,
+    glow_color=C_CYAN_DIM, sclera_color=C_SCLERA, bg=C_BG
+)
+
+STATE_ANGRY = dict(
+    l_lid=0.38, r_lid=0.38,
+    l_lid_angle=18.0, r_lid_angle=18.0,
+    l_gaze_x=0.0, l_gaze_y=0.0,
+    r_gaze_x=0.0, r_gaze_y=0.0,
+    l_iris_scale=1.0, r_iris_scale=1.0,
+    hw=EW, hh=EH,
+    mouth="angry", mouth_morph=1.0, mouth_offset_x=0,
+    brows=False, brow_lift=0.0,
+    glow_color=C_GLOW_ANGRY, sclera_color=C_SCLERA_ANGRY, bg=C_BG_ANGRY
+)
+
+STATE_THINKING = dict(
+    l_lid=0.0, r_lid=0.50,
+    l_gaze_x=0.36, l_gaze_y=-0.22,
+    r_gaze_x=0.36, r_gaze_y=-0.09,
+    l_iris_scale=1.0, r_iris_scale=1.0,
+    hw=EW, hh=EH,
+    mouth="thinking", mouth_morph=1.0, mouth_offset_x=24,
+    brows=False, brow_lift=0.0,
+    glow_color=C_CYAN, sclera_color=C_SCLERA, bg=C_BG
+)
+
+# Список всіх емоцій для випадкового вибору
+ALL_EMOTIONS = [
+    ("happy",     STATE_HAPPY),
+    ("surprised", STATE_SURPRISED),
+    ("sad",       STATE_SAD),
+    ("angry",     STATE_ANGRY),
+    ("thinking",  STATE_THINKING),
+]
+
+# Ваги (happy частіше, angry рідше)
+EMOTION_WEIGHTS = [0.30, 0.20, 0.20, 0.15, 0.15]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# АНІМАЦІЇ ЕМОЦІЙ
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── 😊 HAPPY ──────────────────────────────────────────────────────────────────
 def anim_happy(duration=6.0):
     t_start  = time.time()
     t        = 0.0
@@ -357,29 +643,31 @@ def anim_happy(duration=6.0):
 
     while time.time() - t_start < duration:
         t += DT
-        breathe = 0.010 * math.sin(t * 1.5)
+        breathe = 0.008 * math.sin(t * 1.5)
         hw = int(EW * (1 + breathe))
         hh = int(EH * (1 + breathe))
 
         gx = lerp(gx, tgx, 0.07)
         gy = lerp(gy, tgy, 0.07)
         if time.time() >= gaze_t:
-            tgx   = random.uniform(-0.5, 0.5)
-            tgy   = random.uniform(-0.25, 0.25)
+            tgx    = random.uniform(-0.45, 0.45)
+            tgy    = random.uniform(-0.20, 0.20)
             gaze_t = time.time() + random.uniform(1.5, 3.0)
 
         render(hw=hw, hh=hh,
                l_gaze_x=gx, l_gaze_y=gy,
                r_gaze_x=gx, r_gaze_y=gy,
-               mouth="happy", glow_color=C_CYAN)
+               mouth="happy", mouth_morph=1.0,
+               glow_color=C_CYAN, bg=C_BG)
 
         if time.time() >= blink_t:
-            _blink(mouth="happy", glow_color=C_CYAN)
+            _blink(mouth="happy", glow_color=C_CYAN, bg=C_BG)
             blink_t = time.time() + random.uniform(2.5, 4.5)
 
         time.sleep(DT)
 
-# ── 😲 SURPRISED ─────────────────────────────────────────────────────────────
+
+# ── 😲 SURPRISED ──────────────────────────────────────────────────────────────
 def anim_surprised(duration=4.0):
     t_start    = time.time()
     t          = 0.0
@@ -392,25 +680,27 @@ def anim_surprised(duration=4.0):
 
         if elapsed < spring_dur:
             st        = elapsed / spring_dur
-            overshoot = 1.0 + 0.12 * math.exp(-st * 4) * math.cos(st * 18)
+            overshoot = 1.0 + 0.10 * math.exp(-st * 4) * math.cos(st * 18)
             hw        = int(EW * overshoot)
             hh        = int(EH * overshoot)
             iris_sc   = max(0.55, 1.0 - 0.3 * st)
             brow_lift = st
         else:
-            hw = EW; hh = EH
+            hw, hh  = EW, EH
             iris_sc   = 0.70
             brow_lift = 1.0
-            gx = 0.28 * math.sin(t * 1.3)
-            gy = -0.18 * abs(math.sin(t * 0.85))
+            gx = 0.25 * math.sin(t * 1.3)
+            gy = -0.15 * abs(math.sin(t * 0.85))
 
         render(hw=hw, hh=hh,
                l_gaze_x=gx, r_gaze_x=gx,
                l_gaze_y=gy, r_gaze_y=gy,
                l_iris_scale=iris_sc, r_iris_scale=iris_sc,
                brows=True, brow_lift=brow_lift,
-               glow_color=C_CYAN, mouth="none")
+               mouth="surprised", mouth_morph=min(1.0, elapsed / spring_dur),
+               glow_color=C_CYAN, bg=C_BG)
         time.sleep(DT)
+
 
 # ── 😢 SAD ────────────────────────────────────────────────────────────────────
 def anim_sad(duration=6.0):
@@ -422,19 +712,20 @@ def anim_sad(duration=6.0):
     while time.time() - t_start < duration:
         elapsed = time.time() - t_start
         t += DT
-        sway = 0.05 * math.sin(t * 0.5)
+        sway = 0.04 * math.sin(t * 0.5)
 
         render(l_lid=LID + sway, r_lid=LID + sway,
                l_gaze_y=0.32, r_gaze_y=0.32,
-               mouth="sad",
-               glow_color=C_CYAN_DIM,
+               mouth="sad", mouth_morph=1.0,
+               glow_color=C_CYAN_DIM, bg=C_BG,
                tears=True, tears_elapsed=elapsed)
 
         if time.time() >= blink_t:
-            _blink(mouth="sad", glow_color=C_CYAN_DIM)
+            _blink(mouth="sad", glow_color=C_CYAN_DIM, bg=C_BG)
             blink_t = time.time() + random.uniform(3.5, 6.0)
 
         time.sleep(DT)
+
 
 # ── 😠 ANGRY ──────────────────────────────────────────────────────────────────
 def anim_angry(duration=5.0):
@@ -445,23 +736,19 @@ def anim_angry(duration=5.0):
     ANGLE   = 18.0
 
     def angry_extra(draw):
-        if frame_n % 6 < 3:
-            pulse = abs(math.sin(frame_n * 0.28))
-            # PIL: помаранчевий = (0, int(160*pulse), 255) → екран (255,160p,0)
-            col = (0, int(160 * pulse), 255)
-            draw.text((W // 2 - 10, 8), "!!!", fill=col)
+        pulse = abs(math.sin(frame_n * 0.28))
+        if frame_n % 8 < 4:
+            col = (0, int(140 * pulse), 255)   # PIL→екран: помаранч
+            draw.text((W // 2 - 14, 8), "!!!", fill=col)
 
     while time.time() - t_start < duration:
         t += DT
         frame_n += 1
         elapsed = time.time() - t_start
 
-        # Фон: PIL (r,0,0) → екран (0,0,r) = синій НЕ той
-        # PIL (0,0,r) → екран (r,0,0) = червоний ✓
         bg_r = min(55, int(55 * min(1.0, elapsed / 0.8)))
-        bg   = (0, 0, bg_r)   # ← виправлено! bgr=True: PIL B→екран R
+        bg   = (0, 0, bg_r)
 
-        shake = int(7 * max(0, 1.0 - elapsed * 0.5))
         pulse = abs(math.sin(t * 3.8))
         lid_v = LID + 0.05 * pulse
 
@@ -470,11 +757,12 @@ def anim_angry(duration=5.0):
             r_lid=lid_v, r_lid_angle=ANGLE,
             glow_color=C_GLOW_ANGRY,
             sclera_color=C_SCLERA_ANGRY,
-            mouth="none",
+            mouth="angry", mouth_morph=1.0,
             bg=bg,
             extra_fn=angry_extra
         )
         time.sleep(DT)
+
 
 # ── 🤔 THINKING ───────────────────────────────────────────────────────────────
 def anim_thinking(duration=6.0):
@@ -483,6 +771,11 @@ def anim_thinking(duration=6.0):
     blink_t = time.time() + random.uniform(2.0, 3.5)
     L_LID   = 0.0
     R_LID   = 0.50
+
+    # Mouth offset анімація — smirk сунеться вправо і назад
+    mouth_base_x  = 24
+    mouth_target_x = 36
+    mx_curr = float(mouth_base_x)
 
     FORMULAS = ["E=mc²", "π≈3.14", "42?", "∑n²", "∞", "AI>0", "f(x)?", "..."]
     f_text  = ""
@@ -499,141 +792,114 @@ def anim_thinking(duration=6.0):
             f_alpha = 200
             f_t     = time.time() + random.uniform(2.0, 3.5)
         if f_alpha > 0:
-            # PIL cyan: (255, int(180*a/200), 0) → екран (0,180a,255)
-            col = (255, int(180 * f_alpha / 200), 0)
+            col = (255, int(180 * f_alpha / 200), 0)   # PIL→екран: cyan
             draw.text((f_x, f_y), f_text, fill=col)
-            f_alpha = max(0, f_alpha - 12)
+            f_alpha = max(0, f_alpha - 10)
 
     while time.time() - t_start < duration:
         t += DT
-        gx = 0.36 + 0.10 * math.sin(t * 0.7)
-        gy = -0.22 + 0.07 * math.sin(t * 0.5)
+        elapsed = time.time() - t_start
+
+        # Плавне зміщення рота вправо потім назад
+        phase = (elapsed % 4.0) / 4.0
+        if phase < 0.5:
+            mx_curr = lerp(mouth_base_x, mouth_target_x, ease_inout(phase * 2))
+        else:
+            mx_curr = lerp(mouth_target_x, mouth_base_x, ease_inout((phase - 0.5) * 2))
+
+        gx = 0.36 + 0.08 * math.sin(t * 0.7)
+        gy = -0.22 + 0.06 * math.sin(t * 0.5)
 
         render(
             l_lid=L_LID, l_gaze_x=gx, l_gaze_y=gy,
             r_lid=R_LID, r_gaze_x=gx, r_gaze_y=gy + 0.13,
-            glow_color=C_CYAN,
-            mouth="none",
+            mouth="thinking", mouth_morph=1.0,
+            mouth_offset_x=int(mx_curr),
+            glow_color=C_CYAN, bg=C_BG,
             extra_fn=thinking_extra
         )
 
         if time.time() >= blink_t:
-            for i in range(6):
-                tv = ease_inout(i / 6)
-                render(l_lid=tv, r_lid=R_LID,
-                       l_blink_line=(tv > 0.8), glow_color=C_CYAN)
-                time.sleep(0.013)
-            time.sleep(0.05)
-            for i in range(6):
-                tv = ease_inout(1.0 - i / 6)
-                render(l_lid=tv, r_lid=R_LID,
-                       l_blink_line=(tv > 0.8), glow_color=C_CYAN)
-                time.sleep(0.013)
+            _blink(mouth="thinking", glow_color=C_CYAN,
+                   bg=C_BG, r_lid_fixed=R_LID,
+                   extra_fn=thinking_extra)
             blink_t = time.time() + random.uniform(2.0, 3.5)
 
         time.sleep(DT)
 
-# ── Говоріння ────────────────────────────────────────────────────────────────
+
+# ── 🗣️ TALKING ────────────────────────────────────────────────────────────────
 def anim_talking(duration=3.0):
     t_start = time.time()
     t       = 0.0
     while time.time() - t_start < duration:
         t += DT
         open_f = max(0.0, 0.6 * abs(math.sin(t * 9.0)))
-        render(mouth="open", mouth_open=open_f, glow_color=C_CYAN)
+        render(mouth="surprised", mouth_open=open_f,
+               mouth_morph=1.0, glow_color=C_CYAN, bg=C_BG)
         time.sleep(DT)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ПЛАВНИЙ ПЕРЕХІД
-# ─────────────────────────────────────────────────────────────────────────────
-def transition_to(from_state, to_state, duration=0.45):
-    steps = max(4, int(duration / DT))
-    for i in range(steps + 1):
-        t       = ease_inout(i / steps)
-        blended = {}
-        for key in to_state:
-            fv = from_state.get(key, to_state[key])
-            tv = to_state[key]
-            if isinstance(tv, (int, float)):
-                blended[key] = lerp(fv, tv, t)
-            elif isinstance(tv, tuple) and len(tv) == 3:
-                blended[key] = tuple(int(lerp(fv[j], tv[j], t))
-                                     for j in range(3))
-            else:
-                blended[key] = tv if t > 0.5 else fv
-        render(**blended)
-        time.sleep(DT)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# СТАНИ
+# СЛОВНИК АНІМАЦІЙ ТА ТРИВАЛОСТЕЙ
 # ─────────────────────────────────────────────────────────────────────────────
-STATE_HAPPY = dict(
-    l_lid=0.0, r_lid=0.0, mouth="happy",
-    glow_color=C_CYAN, sclera_color=C_SCLERA, bg=C_BG)
+EMOTION_ANIMS = {
+    "happy":     (anim_happy,     6.0),
+    "surprised": (anim_surprised, 4.0),
+    "sad":       (anim_sad,       6.0),
+    "angry":     (anim_angry,     5.0),
+    "thinking":  (anim_thinking,  6.0),
+}
 
-STATE_SURPRISED = dict(
-    l_lid=0.0, r_lid=0.0, l_iris_scale=0.70, r_iris_scale=0.70,
-    brows=True, brow_lift=1.0, mouth="none",
-    glow_color=C_CYAN, sclera_color=C_SCLERA, bg=C_BG)
-
-STATE_SAD = dict(
-    l_lid=0.42, r_lid=0.42, l_gaze_y=0.32, r_gaze_y=0.32,
-    mouth="sad", glow_color=C_CYAN_DIM,
-    sclera_color=C_SCLERA, bg=C_BG)
-
-STATE_ANGRY = dict(
-    l_lid=0.38, r_lid=0.38, l_lid_angle=18.0, r_lid_angle=18.0,
-    mouth="none", glow_color=C_GLOW_ANGRY,
-    sclera_color=C_SCLERA_ANGRY,
-    bg=(0, 0, 55))   # PIL→екран: темно-червоний ✓
-
-STATE_THINKING = dict(
-    l_lid=0.0, r_lid=0.50, mouth="none",
-    glow_color=C_CYAN, sclera_color=C_SCLERA, bg=C_BG)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ГОЛОВНИЙ ЦИКЛ
+# ГОЛОВНИЙ ЦИКЛ — випадковий порядок емоцій
 # ─────────────────────────────────────────────────────────────────────────────
 def run():
-    print("🤖 AIKO eyes_v2 запущено! Ctrl+C щоб зупинити")
+    print("🤖 AIKO eyes_v2 v3.0 запущено! Ctrl+C щоб зупинити")
 
-    # Поява
-    for i in range(10):
-        t = ease_inout(1.0 - i / 10)
+    # Поява — розкриття очей
+    for i in range(12):
+        t = ease_inout(1.0 - i / 12)
         render(l_lid=t, r_lid=t, mouth="happy",
+               mouth_morph=ease_inout(i / 12),
                l_blink_line=(t > 0.8), r_blink_line=(t > 0.8))
         time.sleep(0.04)
 
-    prev = STATE_HAPPY
+    # Стартова емоція
+    current_name  = "happy"
+    current_state = STATE_HAPPY
+    prev_state    = STATE_HAPPY
 
     while True:
-        print("😊 Happy...")
-        anim_happy(duration=6.0)
+        anim_fn, duration = EMOTION_ANIMS[current_name]
+        print(f"🎭 Емоція: {current_name} ({duration:.1f}с)")
+        anim_fn(duration=duration)
 
-        print("→ 😲 Surprised!")
-        transition_to(prev, STATE_SURPRISED, duration=0.4)
-        prev = STATE_SURPRISED
-        anim_surprised(duration=4.0)
+        # Вибираємо наступну — не ту саму що зараз
+        candidates = [(n, s, w) for (n, s), w
+                      in zip(ALL_EMOTIONS, EMOTION_WEIGHTS)
+                      if n != current_name]
+        names   = [c[0] for c in candidates]
+        states  = [c[1] for c in candidates]
+        weights = [c[2] for c in candidates]
 
-        print("→ 😢 Sad...")
-        transition_to(prev, STATE_SAD, duration=0.6)
-        prev = STATE_SAD
-        anim_sad(duration=6.0)
+        # Нормалізуємо ваги
+        total = sum(weights)
+        norm_weights = [w / total for w in weights]
 
-        print("→ 😠 Angry!")
-        transition_to(prev, STATE_ANGRY, duration=0.35)
-        prev = STATE_ANGRY
-        anim_angry(duration=5.0)
+        next_name  = random.choices(names, weights=norm_weights, k=1)[0]
+        next_state = states[names.index(next_name)]
 
-        print("→ 🤔 Thinking...")
-        transition_to(prev, STATE_THINKING, duration=0.5)
-        prev = STATE_THINKING
-        anim_thinking(duration=6.0)
+        print(f"   → перехід до: {next_name}")
+        transition_to(current_state, next_state, duration=0.5)
 
-        print("→ 😊 Happy знову!")
-        transition_to(prev, STATE_HAPPY, duration=0.5)
-        prev = STATE_HAPPY
+        prev_state    = current_state
+        current_name  = next_name
+        current_state = next_state
 
+
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     try:
         run()
