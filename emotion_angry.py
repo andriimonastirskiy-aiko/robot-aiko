@@ -256,7 +256,7 @@ def _blink(sway_px=0):
         time.sleep(0.013)
     render(lid_frac=1.0, sway_px=sway_px)
     time.sleep(0.05)
-    for i in range(steps):\
+    for i in range(steps):
         t = ease_inout(1.0 - i / steps)
         render(lid_frac=clamp(LID_FRAC_ANGRY + t * (1.0 - LID_FRAC_ANGRY), 0.0, 1.0),
                sway_px=sway_px)
