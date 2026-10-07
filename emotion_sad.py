@@ -40,8 +40,8 @@ MX = W // 2
 MY = 272
 MW = 90
 
-LID_FRAC_SAD  = 0.40    # 40% висоти ока
-LID_SKEW_PX   = 10      # скос: краї на 10px нижче центру
+LID_FRAC_SAD = 0.40    # 40% висоти ока
+LID_SKEW_PX  = 10      # скос: внутрішній край на 10px нижче зовнішнього
 
 # ── Утиліти ───────────────────────────────────────────────────────────────────
 def clamp(v, lo, hi): return max(lo, min(hi, v))
@@ -67,45 +67,46 @@ def draw_glow(draw, cx, cy, hw, hh, r, color):
             width=widths[i]
         )
 
-# ── Повіка SAD — верх заокруглений, низ зі скосом (polygon) ──────────────────
+# ── Повіка SAD — верх заокруглений, низ зі скосом (mirror для правого ока) ───
 def draw_lid_sad(draw, cx, cy, hw, hh, lid_frac, sway_px,
-                 bg_color, glow_color):
+                 bg_color, glow_color, mirror=False):
     if lid_frac <= 0.0:
         return
 
     lid_px = int(hh * lid_frac)
     top_y  = cy - hh
-    bot_y  = cy - hh + lid_px   # центр нижнього краю повіки
+    bot_y  = cy - hh + lid_px
     rr     = ER
 
-    # 1. Заокруглений верх — rounded_rectangle до bot_y+rr
+    # 1. Заокруглений верх
     draw.rounded_rectangle(
         (cx - hw, top_y - 2, cx + hw, bot_y + rr),
         radius=rr, fill=bg_color
     )
 
-    # 2. Перекриваємо нижню частину polygon зі скосом
-    #    Центр (cx) — найвище (bot_y + sway_px)
-    #    Краї (cx±hw) — на LID_SKEW_PX нижче + sway
-    left_y  = int(bot_y + LID_SKEW_PX + sway_px)
-    right_y = int(bot_y + LID_SKEW_PX + sway_px)
-    mid_y   = int(bot_y + sway_px)
+    # 2. Скос:
+    #    Ліве oko (mirror=False): лівий (зовнішній) край вище, правий (внутрішній) нижче
+    #    Праве oko (mirror=True):  лівий (внутрішній) край нижче, правий (зовнішній) вище
+    if not mirror:
+        left_y  = int(bot_y + sway_px)               # зовнішній — вище
+        right_y = int(bot_y + LID_SKEW_PX + sway_px) # внутрішній — нижче
+    else:
+        left_y  = int(bot_y + LID_SKEW_PX + sway_px) # внутрішній — нижче
+        right_y = int(bot_y + sway_px)               # зовнішній — вище
 
     draw.polygon(
         [
-            (cx - hw,       bot_y + rr + 2),   # ліво-верх
-            (cx + hw,       bot_y + rr + 2),   # право-верх
-            (cx + hw,       right_y),           # право-низ (край)
-            (cx,            mid_y),             # центр (вищий)
-            (cx - hw,       left_y),            # ліво-низ (край)
+            (cx - hw, bot_y + rr + 2),  # ліво-верх
+            (cx + hw, bot_y + rr + 2),  # право-верх
+            (cx + hw, right_y),          # право-низ
+            (cx - hw, left_y),           # ліво-низ
         ],
         fill=bg_color
     )
 
-    # 3. Лінія-контур скосу (колір glow)
+    # 3. Лінія-контур скосу
     draw.line(
         [(cx - hw + 4, left_y),
-         (cx,          mid_y),
          (cx + hw - 4, right_y)],
         fill=glow_color, width=3
     )
@@ -114,7 +115,8 @@ def draw_lid_sad(draw, cx, cy, hw, hh, lid_frac, sway_px,
 def draw_eye(draw, cx, cy, hw, hh,
              lid_frac=0.0, sway_px=0,
              gaze_x=0.0, gaze_y=0.0,
-             glow_color=C_CYAN_DIM, bg_color=C_BG):
+             glow_color=C_CYAN_DIM, bg_color=C_BG,
+             mirror=False):
 
     draw_glow(draw, cx, cy, hw, hh, ER, glow_color)
 
@@ -159,7 +161,8 @@ def draw_eye(draw, cx, cy, hw, hh,
                      lid_frac=lid_frac,
                      sway_px=sway_px,
                      bg_color=bg_color,
-                     glow_color=glow_color)
+                     glow_color=glow_color,
+                     mirror=mirror)
 
     # Контур
     gc_outline = tuple(min(255, c + 40) for c in glow_color)
@@ -201,12 +204,17 @@ def render(lid_frac=LID_FRAC_SAD, sway_px=0,
     img  = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(img)
 
+    # Ліве oko — mirror=False (правий край повіки нижче)
     draw_eye(draw, BASE_EL_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
-             gaze_y=gaze_y, bg_color=bg)
+             gaze_y=gaze_y, bg_color=bg,
+             mirror=False)
+
+    # Праве oko — mirror=True (лівий край повіки нижче)
     draw_eye(draw, BASE_ER_X, BASE_EY, EW, EH,
              lid_frac=lid_frac, sway_px=sway_px,
-             gaze_y=gaze_y, bg_color=bg)
+             gaze_y=gaze_y, bg_color=bg,
+             mirror=True)
 
     draw_mouth_sad(draw, morph=mouth_morph)
 
