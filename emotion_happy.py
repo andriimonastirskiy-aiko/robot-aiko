@@ -38,8 +38,6 @@ MX = W // 2
 MY = 272
 MW = 90
 
-LID_SCALE_BLINK = 0.90
-
 # ── Утиліти ───────────────────────────────────────────────────────────────────
 def lerp(a, b, t):    return a + (b - a) * t
 def clamp(v, lo, hi): return max(lo, min(hi, v))
@@ -171,18 +169,18 @@ def render(hw=EW, hh=EH, lid_frac=0.0, gaze_x=0.0, gaze_y=0.0,
     draw_mouth_happy(draw, morph=mouth_morph)
     device.display(img)
 
-# ── Моргання ──────────────────────────────────────────────────────────────────
+# ── Моргання — повне 100% закриття ───────────────────────────────────────────
 def do_blink():
     steps = 7
     for i in range(steps):
         t = ease_inout(i / steps)
-        render(lid_frac=t * LID_SCALE_BLINK)
+        render(lid_frac=t)          # 0.0 → 1.0 (повне закриття)
         time.sleep(0.013)
-    render(lid_frac=LID_SCALE_BLINK, show_line=True)
+    render(lid_frac=1.0, show_line=True)   # повністю закрито
     time.sleep(0.05)
     for i in range(steps):
         t = ease_inout(1.0 - i / steps)
-        render(lid_frac=t * LID_SCALE_BLINK)
+        render(lid_frac=t)          # 1.0 → 0.0 (відкриття)
         time.sleep(0.013)
 
 # ── Анімація Happy ────────────────────────────────────────────────────────────
