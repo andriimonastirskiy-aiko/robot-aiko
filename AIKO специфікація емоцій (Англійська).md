@@ -46,17 +46,18 @@ Recommended rest state: eyes open, pupils centered, mouth a faint smile (`curve`
 
 The face is drawn in code in real time, not from sprites, so transitions between any two emotions stay smooth without per-pair frames.
 
-- **Stack:** Python + pygame (SDL2), target 30 fps.
+- **Stack:** Python + pygame (SDL2, offscreen) → PIL Image → luma.lcd (ili9488) → SPI display. Target 30 fps.
+- **Display driver:** luma.lcd with ili9488 driver over SPI (port=0, device=0, DC=GPIO25, RST=GPIO17, bus_speed=32 MHz). pygame renders to an offscreen surface, which is converted to PIL Image via `surfarray` and sent to the physical display via `luma.lcd.display()`. fbcp-ili9341 is **NOT** used.
 - **Glow:** blur is the most expensive operation. Render the glow once at startup (e.g. Pillow GaussianBlur) for each color and size, cache it as surfaces, and only blit it each frame.
 - **Eyelids:** background-colored polygons drawn over the eye and clipped to the eye shape. The eye never moves; only the lids do.
 - **Time, not frames:** all durations in milliseconds, interpolation by delta time. Frame rate depends on how much of the screen changes (see «SPI display limits»); animations never slow down because of it.
 - **Mouth in Speaking:** driven by audio loudness (RMS every \~30 ms with smoothing), no phoneme sync.
 
-### SPI display limits (3.5")
+### SPI display limits (3.5\")
 
 SPI is the bottleneck: a full 480×320 frame in 16-bit color is \~300 KB, so full-screen refresh gives only \~13 fps at 32 MHz SPI and \~19 fps at 48 MHz. Smoothness comes from updating only the part of the screen that changed each frame.
 
-- **Driver:** fbcp-ili9341 (supports ILI9486 and similar controllers) sends only changed regions to the display, giving a much higher frame rate than stock fbtft. Alternative: pass only dirty rectangles to pygame (`display.update(rects)`).
+- **Driver:** luma.lcd (ili9488) is the confirmed working driver for this hardware. It sends the full frame via `display()` call. For higher frame rates, dirty-rectangle optimisation can be added by rendering only changed regions and blitting them manually via luma's `draw` interface.
 - **Black background helps:** in most emotions only the eyes (two \~150×140 px areas) and the mouth change, about 20–25% of the screen. Target a steady 25–30 fps.
 - **Full-screen effects are expensive.** The red background pulse in Angry changes the whole screen every frame. Fix: pulse in 8–10 brightness steps per cycle instead of every frame, or limit the glow to an ellipse around the eyes.
 - **Color depth:** these displays usually run in RGB565, so smooth glow gradients can band. Keep the glow short (blur 8–12 px) and add light dithering to the cached glow surfaces if needed.
