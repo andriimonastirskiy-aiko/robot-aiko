@@ -898,12 +898,15 @@ def draw_mouth(surface, params, sleep_open=0.35, wavy_phase=0.0, bg_color=BG_COL
 
 # ─────────────────────────────────────────────
 # МІСТ: pygame surface → luma.lcd
-# Увага: ILI9488 з bgr=True сам робить swap,
-# тому передаємо RGB без додаткового [:, :, ::-1]
+# pygame.surfarray дає масив у форматі (x, y, RGB),
+# після transpose → (y, x, RGB).
+# ILI9488 очікує BGR, тому робимо [:, :, ::-1] swap.
 # ─────────────────────────────────────────────
 def surface_to_luma(surface, luma_device):
     raw     = pygame.surfarray.array3d(surface)
     raw     = raw.transpose(1, 0, 2)
+    # Swap RGB → BGR для ILI9488
+    raw     = raw[:, :, ::-1]
     pil_img = Image.fromarray(raw.astype("uint8"), "RGB")
     luma_device.display(pil_img)
 
