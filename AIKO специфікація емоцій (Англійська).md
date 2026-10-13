@@ -47,7 +47,7 @@ Recommended rest state: eyes open, pupils centered, mouth a faint smile (`curve`
 The face is drawn in code in real time, not from sprites, so transitions between any two emotions stay smooth without per-pair frames.
 
 - **Stack:** Python + pygame (SDL2, offscreen) → PIL Image → luma.lcd (ili9488) → SPI display. Target 30 fps.
-- **Display driver:** luma.lcd with ili9488 driver over SPI (port=0, device=0, DC=GPIO25, RST=GPIO17, bus_speed=32 MHz). pygame renders to an offscreen surface, which is converted to PIL Image via `surfarray` and sent to the physical display via `luma.lcd.display()`. fbcp-ili9341 is **NOT** used.
+- **Display driver:** luma.lcd with ili9488 driver over SPI (port=0, device=0, DC=GPIO25, RST=GPIO17, bus_speed=32 MHz). pygame renders to an offscreen surface, which is converted to PIL Image via `surfarray` and sent to the physical display via `luma.lcd.display()`. fbcp-ili9341 is **NOT** used. **Important:** ILI9488 operates in BGR mode. The `bgr=True` parameter in luma.lcd is not sufficient — R and B channels must be swapped manually via `raw[:, :, ::-1]` before converting to PIL Image.
 - **Glow:** blur is the most expensive operation. Render the glow once at startup (e.g. Pillow GaussianBlur) for each color and size, cache it as surfaces, and only blit it each frame.
 - **Eyelids:** background-colored polygons drawn over the eye and clipped to the eye shape. The eye never moves; only the lids do.
 - **Time, not frames:** all durations in milliseconds, interpolation by delta time. Frame rate depends on how much of the screen changes (see «SPI display limits»); animations never slow down because of it.
@@ -59,7 +59,7 @@ SPI is the bottleneck: a full 480×320 frame in 16-bit color is \~300 KB, so ful
 
 - **Driver:** luma.lcd (ili9488) is the confirmed working driver for this hardware. It sends the full frame via `display()` call. For higher frame rates, dirty-rectangle optimisation can be added by rendering only changed regions and blitting them manually via luma's `draw` interface.
 - **Black background helps:** in most emotions only the eyes (two \~150×140 px areas) and the mouth change, about 20–25% of the screen. Target a steady 25–30 fps.
-- **Full-screen effects are expensive.** The red background pulse in Angry changes the whole screen every frame. Fix: pulse in 8–10 brightness steps per cycle instead of every frame, or limit the glow to an ellipse around the eyes.
+- **Full-screen effects are expensive.** The red background pulse in Angry changes the whole screen every frame. Fix: use a static dark-red background #3A0000 instead of pulsing, or limit the glow to an ellipse around the eyes.
 - **Color depth:** these displays usually run in RGB565, so smooth glow gradients can band. Keep the glow short (blur 8–12 px) and add light dithering to the cached glow surfaces if needed.
 - **Moving effects** (tears, formulas, hearts, «z z z»): draw as small sprites and update only their rectangles, old and new positions.
 
@@ -106,7 +106,7 @@ A transition animation, not a full emotion. It plays on top of whatever emotion 
 - **Eyes:** top lids lowered to 40% of eye height, lid line tilted with the inner corner down (≈20°); this creates the angry look without eyebrows.
 - **Pupils:** centered, shifted 6 px inward (toward the nose).
 - **Color:** outline and glow #FF2200, stronger glow (blur \~18 px); sclera slightly pink #FFE8E4. Iris stays blue, or optionally turns red #FF4422.
-- **Background:** radial red glow from the center (#3A0000 at center → #000000 at edges), slowly pulsing (1.2 s cycle). On the SPI display, pulse in steps (see SPI display limits).
+- **Background:** static dark-red #3A0000 (no pulsing — saves SPI bandwidth). Radial gradient is optional but not required.
 - **Mouth:** clenched zigzag line (4 teeth), `width` 60. The reference had no mouth; it is added.
 - **Idle animation:** every 2–3 s a short horizontal shake of the eyes ±2 px (vertical never changes).
 
@@ -174,7 +174,7 @@ Eyelid values are percentages of eye height; pupil offsets are pixels from the e
 | Blink | 50% | 50% | 0° | — | 1.0 | #00BFFF | unchanged | — |
 | Surprised | 0% | 0% | 0° | (0, 0), smaller | 1.12 | #00BFFF | round «o» | sparks |
 | Sad | 35% | 0% | outer down 10° | (0, +12) | 1.0 | #00BFFF 70% | curve −12 | tears |
-| Angry | 40% | 0% | inner down 20° | (±6 inward, 0) | 1.0 | #FF2200 | zigzag | red background, shake |
+| Angry | 40% | 0% | inner down 20° | (±6 inward, 0) | 1.0 | #FF2200 | zigzag | static bg #3A0000, shake |
 | Thinking | 0% | L 0% / R 30% | 0° | (+14, −14) | 1.0 | #00BFFF | sideways line | formulas |
 | Love | 0% | 10% | 0° | hearts centered | 1.0 | #00BFFF, hearts #FF4FA3 | curve +14 | pulse, blush, hearts |
 | Confused | L 0% / R 25% | 0% | R 8° | L (−10, −8), R (+8, +6) | L 1.08 / R 1.0 | #00BFFF | wavy line | «?» sign |
