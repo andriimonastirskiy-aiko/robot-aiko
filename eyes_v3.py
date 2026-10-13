@@ -898,13 +898,13 @@ def draw_mouth(surface, params, sleep_open=0.35, wavy_phase=0.0, bg_color=BG_COL
 
 # ─────────────────────────────────────────────
 # МІСТ: pygame surface → luma.lcd
-# Увага: ILI9488 працює у BGR режимі, тому
-# міняємо R і B канали через [:, :, ::-1]
+# Увага: ILI9488 з bgr=True сам робить swap,
+# тому передаємо RGB без додаткового [:, :, ::-1]
 # ─────────────────────────────────────────────
 def surface_to_luma(surface, luma_device):
     raw     = pygame.surfarray.array3d(surface)
     raw     = raw.transpose(1, 0, 2)
-    pil_img = Image.fromarray(raw[:, :, ::-1].astype("uint8"), "RGB")
+    pil_img = Image.fromarray(raw.astype("uint8"), "RGB")
     luma_device.display(pil_img)
 
 
@@ -931,9 +931,9 @@ def main():
         except Exception as e:
             print(f"[DISPLAY] luma недоступна → режим вікна ({e})")
 
-    # ── Pygame ──────────────────────────────────────────────────────────
+    # ── Pygame — SDL_VIDEODRIVER мусить бути встановлений ДО pygame.init() ──
     if USE_LUMA:
-        os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
+        os.environ["SDL_VIDEODRIVER"] = "offscreen"
 
     pygame.init()
     GLOW_CACHE = GlowCache()
