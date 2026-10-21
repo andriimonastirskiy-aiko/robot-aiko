@@ -11,7 +11,7 @@ SERVO2_PIN = 24
 # Центр = 90°, обмеження ±30°
 CENTER = 90
 LIMIT = 30
-STEP_DELAY = 0.02  # 20мс між кроками = плавний рух
+STEP_DELAY = 0.01  # 10мс між кроками = швидший рух
 
 def angle_to_us(angle):
     return int(500 + (angle / 180.0) * 2000)
