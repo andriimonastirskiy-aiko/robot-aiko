@@ -80,7 +80,7 @@ center(); time.sleep(0.5)
 print("\n▶️  Тест нахилу:")
 tilt(+30); time.sleep(0.5)
 tilt(0);   time.sleep(0.5)
-tilt(-30); time.sleep(0.5)
+tilt(-10); time.sleep(0.5)
 center();  time.sleep(0.5)
 
 stop_servos()
