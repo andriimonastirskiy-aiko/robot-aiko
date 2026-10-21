@@ -46,6 +46,17 @@
 - [x] Фізично підключений та протестований ✅
 - [x] Бібліотека luma.lcd v2.13.0 встановлена
 - [x] SPI активований (/dev/spidev0.0, /dev/spidev0.1)
+- [x] ✅ `eyes_v3.py` запущена та протестована на дисплеї
+
+### 👁️ Анімації очей — eyes_v3
+- [x] ✅ `eyes_v3.py` — система емоцій реалізована (pygame + SDL2, кешований glow)
+- [x] ✅ **11 емоцій:** Neutral, Happy, Surprised, Sad, Angry, Thinking, Love, Confused, Sleep, Listening, Speaking
+- [x] ✅ Миттєві переходи між емоціями (без lerp — стабільніше на Pi Zero)
+- [x] ✅ Авто-моргання (neutral, happy, thinking, listening)
+- [x] ✅ Кешований glow (GlowCache — Pillow GaussianBlur при старті)
+- [x] ✅ Ефекти: TearManager, ZzzManager, FormulaManager, SparkManager, HeartManager, QuestionMarkManager, LoudnessBars
+- [x] ✅ Диференціальні повіки з нахилом (tilt_deg) — angry/sad
+- [x] ✅ BGR swap для ILI9488 ([:, :, ::-1])
 
 ### 🌐 Веб-сервер
 - [x] `web_server.py` — Flask веб-інтерфейс для керування AIKO
@@ -69,17 +80,15 @@
 
 ## ⏳ Заплановано
 
-### 🖥️ Анімації очей — eyes_v3 (нова система з нуля)
-> Повністю нова реалізація на базі офіційної специфікації `AIKO специфікація емоцій (Англійська).md`
-
-- [ ] `eyes_v3.py` — нова система емоцій (pygame + SDL2, dirty rectangles, кешований glow)
-- [ ] **12 емоцій:** Neutral, Happy, Blink, Surprised, Sad, Angry, Thinking, Love, Confused, Sleep, Listening, Speaking
-- [ ] Плавні переходи 350ms між усіма емоціями (ease-in-out, інтерполяція параметрів)
-- [ ] Оновлення лише брудних прямокутників (dirty rects) для швидкості на SPI
-- [ ] Кешований glow (Pillow GaussianBlur один раз при старті)
-- [ ] Mouth driven by audio RMS (Speaking/Listening)
+### 👁️ Очі — інтеграція
+- [ ] Mouth driven by audio RMS (Speaking/Listening) — заплановано
+- [ ] Зв'язок емоцій з brain.py (сенсори, аудіо, команди)
 - [ ] Інтеграція з веб-сервером (керування емоцією через API)
-- [ ] Зв'язок емоцій з подіями (сенсори, аудіо, команди)
+
+### 🧠 brain.py
+- [ ] Об'єднати OpenAI + голос + очі + рух в єдиний файл
+- [ ] Wake word детекція
+- [ ] Розпізнавання мови (STT)
 
 ### 🔄 Перехід на Pi 4 4GB
 - [x] ✅ Raspberry Pi 4 4GB отримано!
@@ -106,7 +115,7 @@
 | `web_server.py` | Flask веб-інтерфейс |
 | `sensor_manager.py` | Сенсори ToF VL53L0X |
 | `wifi_setup.py` | Captive Portal для Wi-Fi налаштування |
-| `eyes_v3.py` | 🔜 Нова система емоцій (pygame, 12 емоцій, специфікація) |
+| `eyes_v3.py` | ✅ Система емоцій (pygame, 11 емоцій, ILI9488, GlowCache) |
 | `servo.py` | ✅ Керування серво головою (GPIO23/24, pan ±30°, tilt +30°/-10°) |
 | `brain.py` | 🔜 OpenAI GPT-4o-mini + голос + очі + рух |
 | `PINOUT.md` | Карта всіх пінів |
