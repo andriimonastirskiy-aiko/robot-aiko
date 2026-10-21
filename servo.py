@@ -49,15 +49,15 @@ def center():
 
 def pan(degrees):
     """Поворот: + вправо, - вліво"""
-    a1 = CENTER + degrees
-    a2 = CENTER + degrees
+    a1 = CENTER - degrees
+    a2 = CENTER - degrees
     print(f"↔️  Pan {degrees:+}° → S1={a1}°, S2={a2}°")
     smooth_move_both(a1, a2)
 
 def tilt(degrees):
     """Нахил: + вгору, - вниз"""
-    a1 = CENTER + degrees
-    a2 = CENTER - degrees
+    a1 = CENTER - degrees
+    a2 = CENTER + degrees
     print(f"↕️  Tilt {degrees:+}° → S1={a1}°, S2={a2}°")
     smooth_move_both(a1, a2)
 
