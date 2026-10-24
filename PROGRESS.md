@@ -57,6 +57,7 @@
 - [x] ✅ Ефекти: TearManager, ZzzManager, FormulaManager, SparkManager, HeartManager, QuestionMarkManager, LoudnessBars
 - [x] ✅ Диференціальні повіки з нахилом (tilt_deg) — angry/sad
 - [x] ✅ BGR swap для ILI9488 ([:, :, ::-1])
+- [x] ✅ FIFO-керування відлагоджено — виправлено нескінченний цикл (`for line in f` + перевірка порожнього рядка)
 
 ### 🌐 Веб-сервер
 - [x] `web_server.py` — Flask веб-інтерфейс для керування AIKO
@@ -143,6 +144,7 @@
 | Синій фон замість червоного | ILI9488 bgr=True міняє R↔B канали | ✅ Враховано в специфікації v3 |
 | Очі перекривались | Розмір завеликий | ✅ Нова геометрія в специфікації v3 |
 | Кнопка GPIO3 конфлікт | GPIO3 зайнятий I2C (VL53L0X) | ✅ Кнопка переназначена на GPIO17 |
+| FIFO нескінченний цикл | `echo` в `/tmp/aiko_emotion` спамив порожні рядки | ✅ `for line in f` + `if not cmd: continue` |
 
 ---
 
@@ -154,7 +156,7 @@
 | `web_server.py` | Flask веб-інтерфейс |
 | `sensor_manager.py` | Сенсори ToF VL53L0X |
 | `wifi_setup.py` | Captive Portal для Wi-Fi налаштування |
-| `eyes_v3.py` | ✅ Система емоцій (pygame, 11 емоцій, ILI9488, GlowCache) |
+| `eyes_v3.py` | ✅ Система емоцій (pygame, 11 емоцій, ILI9488, GlowCache, FIFO керування) |
 | `servo.py` | ✅ Керування серво головою (GPIO23/24, pan ±30°, tilt +30°/-10°) |
 | `face.py` | 🔜 Крок 1 — міст між brain.py та eyes_v3.py |
 | `talker.py` | 🔜 Крок 2 — GPT + TTS + емоції |
