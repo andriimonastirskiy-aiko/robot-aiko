@@ -129,8 +129,8 @@ EMOTION_PARAMS = {
     "sad": {
         "top_lid_l": 0.35, "bot_lid_l": 0.0,
         "top_lid_r": 0.35, "bot_lid_r": 0.0,
-        # outer corner lower → від'ємний кут
-        "lid_tilt_l": -10.0, "lid_tilt_r": -10.0,
+        # дзеркальний скос: / \ — краї нижче ніж центр
+        "lid_tilt_l": -10.0, "lid_tilt_r": 10.0,
         "pupil_offset_l": (0, 12), "pupil_offset_r": (0, 12),
         "eye_scale_l": 1.0, "eye_scale_r": 1.0,
         "outline_color": COLOR_OUTLINE,
@@ -145,8 +145,8 @@ EMOTION_PARAMS = {
     "angry": {
         "top_lid_l": 0.40, "bot_lid_l": 0.0,
         "top_lid_r": 0.40, "bot_lid_r": 0.0,
-        # inner corner lower → додатній кут
-        "lid_tilt_l": 20.0, "lid_tilt_r": 20.0,
+        # дзеркальний скос: \ / — центр нижче ніж краї
+        "lid_tilt_l": 20.0, "lid_tilt_r": -20.0,
         "pupil_offset_l": (6, 0),  "pupil_offset_r": (-6, 0),
         "eye_scale_l": 1.0, "eye_scale_r": 1.0,
         "outline_color": COLOR_ANGRY,
