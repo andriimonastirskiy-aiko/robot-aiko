@@ -982,11 +982,10 @@ def main():
         while True:
             try:
                 with open(FIFO_PATH, "r") as f:
-                    for line in f:
-                        cmd = line.strip()
-                        if cmd in EMOTION_PARAMS:
-                            with fifo_lock:
-                                fifo_emotion_queue.append(cmd)
+                    cmd = f.readline().strip()
+                    if cmd in EMOTION_PARAMS:
+                        with fifo_lock:
+                            fifo_emotion_queue.append(cmd)
             except Exception as e:
                 print(f"[FIFO] помилка: {e}")
                 time.sleep(0.5)
