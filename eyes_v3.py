@@ -981,11 +981,16 @@ def main():
     def fifo_reader():
         while True:
             try:
+                # open() блокується тут поки хтось не відкриє FIFO для запису
                 with open(FIFO_PATH, "r") as f:
-                    cmd = f.readline().strip()
-                    if cmd in EMOTION_PARAMS:
-                        with fifo_lock:
-                            fifo_emotion_queue.append(cmd)
+                    for line in f:
+                        cmd = line.strip()
+                        if not cmd:
+                            continue
+                        if cmd in EMOTION_PARAMS:
+                            with fifo_lock:
+                                fifo_emotion_queue.append(cmd)
+                            print(f"[FIFO] отримано: {cmd}")
             except Exception as e:
                 print(f"[FIFO] помилка: {e}")
                 time.sleep(0.5)
