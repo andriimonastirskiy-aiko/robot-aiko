@@ -103,15 +103,15 @@
 - Дисплей: luma.lcd ILI9488, BGR swap (`[:, :, ::-1]`)
 - Переходи: миттєві, без lerp
 - Керування: `echo "emotion" > /tmp/aiko_emotion`
-- Коміт: `dd496aa2`
+- Коміт: `a4ed5674` ✅ виправлено нахил бровей sad/angry
 
 | Емоція | Ефекти |
 |--------|--------|
 | neutral | Авто-моргання |
 | happy | Широка усмішка |
 | surprised | Іскри SparkManager |
-| sad | Сльози TearManager |
-| angry | Червоний фон #3A0000, зигзаг |
+| sad | Сльози TearManager, брови \ / |
+| angry | Червоний фон #3A0000, зигзаг, брови / \ |
 | thinking | Формули FormulaManager |
 | love | Серця + рум'янець HeartManager |
 | confused | Знак питання, хвилястий рот |
@@ -253,3 +253,4 @@ echo "angry" > /tmp/aiko_emotion
 | Синій фон замість червоного на ILI9488 | ✅ BGR swap врахований в eyes_v3 |
 | Кнопка GPIO3 конфлікт з I2C (VL53L0X) | ✅ Кнопка переназначена на GPIO17 |
 | FIFO нескінченний цикл в eyes_v3 | ✅ `for line in f` + `if not cmd: continue` |
+| Неправильний нахил бровей sad/angry | ✅ sad: \ / (tilt 10°,-10°), angry: / \ (tilt -20°,20°) |
