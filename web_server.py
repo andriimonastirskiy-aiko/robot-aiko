@@ -91,6 +91,12 @@ input[type=range] { width: 100%; }
 .audio-btn.green { background: #dcfce7; border-color: #86efac; color: #15803d; }
 .audio-btn.blue { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
 .tts-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 13px; margin-bottom: 8px; }
+.emotion-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
+.em-btn { padding: 12px 6px; border-radius: 10px; border: 1px solid #e5e5e5;
+          background: #f9f9f9; cursor: pointer; font-size: 13px; font-weight: 500;
+          transition: all 0.15s; }
+.em-btn:active { background: #dbeafe; border-color: #93c5fd; transform: scale(0.95); }
+.em-btn.active-emotion { background: #dcfce7; border-color: #86efac; }
 </style>
 </head>
 <body>
@@ -100,6 +106,7 @@ input[type=range] { width: 100%; }
   <div class="nav">
     <button class="nav-btn active" onclick="showPage('control',this)">Керування</button>
     <button class="nav-btn" onclick="showPage('audio',this)">Аудіо</button>
+    <button class="nav-btn" onclick="showPage('emotions',this)">Емоції</button>
     <button class="nav-btn" onclick="showPage('info',this)">Інформація</button>
   </div>
 </div>
@@ -180,6 +187,32 @@ input[type=range] { width: 100%; }
       <div class="card-title">Лог аудіо</div>
       <div class="log-box" id="audio-log">
         <div class="log-line"><span class="ok">● Аудіо готове</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-emotions">
+    <div class="card" style="margin-top:12px">
+      <div class="card-title">Емоції AIKO (потрібен запущений eyes_v3.py)</div>
+      <div class="emotion-grid">
+        <button class="em-btn" onclick="sendEmotion('neutral',this)">😐 neutral</button>
+        <button class="em-btn" onclick="sendEmotion('happy',this)">😄 happy</button>
+        <button class="em-btn" onclick="sendEmotion('surprised',this)">😲 surprised</button>
+        <button class="em-btn" onclick="sendEmotion('sad',this)">😢 sad</button>
+        <button class="em-btn" onclick="sendEmotion('angry',this)">😠 angry</button>
+        <button class="em-btn" onclick="sendEmotion('thinking',this)">🤔 thinking</button>
+        <button class="em-btn" onclick="sendEmotion('love',this)">😍 love</button>
+        <button class="em-btn" onclick="sendEmotion('confused',this)">😕 confused</button>
+        <button class="em-btn" onclick="sendEmotion('sleep',this)">😴 sleep</button>
+        <button class="em-btn" onclick="sendEmotion('listening',this)">👂 listening</button>
+        <button class="em-btn" onclick="sendEmotion('speaking',this)">🗣️ speaking</button>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:#888">Активна: <b id="cur-emotion">—</b></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="card-title">Лог емоцій</div>
+      <div class="log-box" id="emotion-log">
+        <div class="log-line"><span class="ok">● Готово</span></div>
       </div>
     </div>
   </div>
@@ -280,6 +313,19 @@ function stopCmd() {
   forceStop();
 }
 
+function sendEmotion(name, btn) {
+  fetch('/emotion/' + name).then(r=>r.json()).then(d=>{
+    if(d.ok) {
+      document.getElementById('cur-emotion').textContent = name;
+      addLog('→ ' + name, 'ok', 'emotion-log');
+      document.querySelectorAll('.em-btn').forEach(b => b.classList.remove('active-emotion'));
+      btn.classList.add('active-emotion');
+    } else {
+      addLog('❌ ' + d.error, 'warn', 'emotion-log');
+    }
+  });
+}
+
 function startRecord() {
   var dur = document.getElementById('rec-dur').value;
   addLog('Запис ' + dur + ' сек...', 'ok', 'audio-log');
@@ -371,13 +417,29 @@ def motor(direction):
     }
     if direction in motors_map:
         motors_map[direction](speed)
-    # ✅ Передаємо напрямок руху — тепер сенсори знають що блокувати
     sensor_manager.set_moving(True, direction, motors.stop)
     return jsonify({'blocked': False, 'cmd': direction})
 
 @app.route('/sensors')
 def get_sensors():
     return jsonify(sensor_manager.get_data())
+
+@app.route('/emotion/<name>')
+def set_emotion(name):
+    valid = ["neutral","happy","surprised","sad","angry",
+             "thinking","love","confused","sleep","listening","speaking"]
+    if name not in valid:
+        return jsonify({'ok': False, 'error': 'unknown emotion'})
+    try:
+        fifo = "/tmp/aiko_emotion"
+        if os.path.exists(fifo):
+            with open(fifo, "w") as f:
+                f.write(name + "\n")
+            return jsonify({'ok': True, 'emotion': name})
+        else:
+            return jsonify({'ok': False, 'error': 'eyes_v3.py не запущено (FIFO відсутній)'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
 
 @app.route('/audio/record')
 def audio_record():
