@@ -6,6 +6,10 @@ Canvas: 480x320, pygame + SDL2
 Дисплей: luma.lcd (ILI9488) або fallback pygame-вікно
 Переходи між емоціями — МИТТЄВІ (без lerp/interpolation)
 Центри очей і рота НІКОЛИ не змінюються по Y
+
+Керування:
+  python3 eyes_v3.py        — чекає команд через /tmp/aiko_emotion
+  python3 eyes_v3.py --test — авто-тест всіх емоцій
 """
 
 import os
@@ -13,6 +17,7 @@ import sys
 import math
 import time
 import random
+import threading
 
 import pygame
 import numpy as np
@@ -958,11 +963,37 @@ def main():
     qmark_mgr   = QuestionMarkManager()
     bars        = LoudnessBars()
 
-    # Авто-тест
+    # ── Режим керування ────────────────────────────────────────────────────
+    test_mode     = "--test" in sys.argv
     TEST_EMOTIONS = list(EMOTION_PARAMS.keys())
     test_idx      = 0
     test_timer    = 0.0
     TEST_INTERVAL = 3000
+
+    # ── FIFO для зовнішнього керування ────────────────────────────────────
+    FIFO_PATH = "/tmp/aiko_emotion"
+    if not os.path.exists(FIFO_PATH):
+        os.mkfifo(FIFO_PATH)
+
+    fifo_emotion_queue = []
+    fifo_lock = threading.Lock()
+
+    def fifo_reader():
+        while True:
+            try:
+                with open(FIFO_PATH, "r") as f:
+                    for line in f:
+                        cmd = line.strip()
+                        if cmd in EMOTION_PARAMS:
+                            with fifo_lock:
+                                fifo_emotion_queue.append(cmd)
+            except Exception as e:
+                print(f"[FIFO] помилка: {e}")
+                time.sleep(0.5)
+
+    t = threading.Thread(target=fifo_reader, daemon=True)
+    t.start()
+    print("[FIFO] слухає /tmp/aiko_emotion ✅")
 
     # Анімація дихання Sleep
     breath_phase = 0.0
@@ -992,15 +1023,24 @@ def main():
                         if k == "surprised":
                             spark_mgr.trigger()
 
-        # ── Авто-тест ──────────────────────────────────────────────────
-        test_timer += dt
-        if test_timer >= TEST_INTERVAL:
-            test_timer = 0.0
-            test_idx   = (test_idx + 1) % len(TEST_EMOTIONS)
-            new_e      = TEST_EMOTIONS[test_idx]
-            emotion.set_emotion(new_e)
-            if new_e == "surprised":
-                spark_mgr.trigger()
+        # ── Команди з FIFO ─────────────────────────────────────────────
+        with fifo_lock:
+            if fifo_emotion_queue:
+                new_e = fifo_emotion_queue.pop(0)
+                emotion.set_emotion(new_e)
+                if new_e == "surprised":
+                    spark_mgr.trigger()
+
+        # ── Авто-тест (тільки з --test) ────────────────────────────────
+        if test_mode:
+            test_timer += dt
+            if test_timer >= TEST_INTERVAL:
+                test_timer = 0.0
+                test_idx   = (test_idx + 1) % len(TEST_EMOTIONS)
+                new_e      = TEST_EMOTIONS[test_idx]
+                emotion.set_emotion(new_e)
+                if new_e == "surprised":
+                    spark_mgr.trigger()
 
         current_name = emotion.current_name
 
